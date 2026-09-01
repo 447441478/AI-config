@@ -4352,13 +4352,46 @@
         Utils.pushDataSource('诊断样本已清空');
     }
 
+    function getNightmareStarFallbackConditions(bossId) {
+        const id = Number(bossId || 0);
+        if (id === 5) {
+            return {
+                nightMareStarConditionType: [1, 1, 2],
+                nightMareStarConditionValue: [[15], [6], [4, 5]],
+            };
+        }
+        if (id === 4) {
+            return {
+                nightMareStarConditionType: [1, 1, 2],
+                nightMareStarConditionValue: [[15], [6], [4, 5]],
+            };
+        }
+        if (id === 3) {
+            return {
+                nightMareStarConditionType: [1, 1, 2],
+                nightMareStarConditionValue: [[15], [8], [4, 4]],
+            };
+        }
+        if (id === 2) {
+            return {
+                nightMareStarConditionType: [1, 1, 2],
+                nightMareStarConditionValue: [[15], [8], [4, 4]],
+            };
+        }
+        if (id === 1) {
+            return {
+                nightMareStarConditionType: [1, 1, 2],
+                nightMareStarConditionValue: [[15], [10], [5, 3]],
+            };
+        }
+        return {
+            nightMareStarConditionType: [1, 1, 2],
+            nightMareStarConditionValue: [[15], [6], [4, 5]],
+        };
+    }
+
     function evaluateNightmareStarResult(bossId, result) {
-        const Configs = Utils.safeCall(() => Runtime.getConfigs(), null);
-        const conf = Configs && Configs.NightMareStarConf && Configs.NightMareStarConf.getByBossId
-            ? Configs.NightMareStarConf.getByBossId(bossId)
-            : null;
-        const conditionType = Configs && Configs.NightMareStarConditionType ? Configs.NightMareStarConditionType : {};
-        if (!conf || !result || !result.isWin) {
+        if (!result || !result.isWin) {
             return {
                 stars: 0,
                 oneStar: false,
@@ -4366,6 +4399,15 @@
                 threeStar: false,
             };
         }
+        const Configs = Utils.safeCall(() => Runtime.getConfigs(), null);
+        let conf = getNightmareStarConfigByBossId(bossId);
+        if (!conf && Configs && Configs.NightMareStarConf && typeof Configs.NightMareStarConf.getByBossId === 'function') {
+            conf = Utils.safeCall(() => Configs.NightMareStarConf.getByBossId(bossId), null);
+        }
+        if (!conf || !Array.isArray(conf.nightMareStarConditionType) || !conf.nightMareStarConditionType.length) {
+            conf = getNightmareStarFallbackConditions(bossId);
+        }
+        const conditionType = Configs && Configs.NightMareStarConditionType ? Configs.NightMareStarConditionType : {};
         const roundCount = extractRoundCount(result);
         const aliveCount = countAlive(extractSponsorTeamInfo(result));
         let stars = 0;
@@ -4375,9 +4417,9 @@
             const type = types[i];
             const value = values[i] || [];
             let passed = false;
-            if (type === conditionType.STAR_CONDITION_ROUND) {
+            if (type === conditionType.STAR_CONDITION_ROUND || type === 1 || String(type) === '1') {
                 passed = roundCount > 0 && roundCount <= Number(value[0] || 0);
-            } else if (type === conditionType.STAR_CONDITION_ROUND_HEROALIVE) {
+            } else if (type === conditionType.STAR_CONDITION_ROUND_HEROALIVE || type === 2 || String(type) === '2') {
                 const maxRound = Number(value[0] || 0);
                 const minAlive = Number(value[1] || 1);
                 passed = roundCount > 0 && roundCount <= maxRound && aliveCount >= minAlive;
@@ -6815,6 +6857,9 @@
                 const winA = a.record.isWin ? 1 : 0;
                 const winB = b.record.isWin ? 1 : 0;
                 if (winA !== winB) return winB - winA;
+                const starA = a.record.stars ? Number(a.record.stars.stars || 0) : 0;
+                const starB = b.record.stars ? Number(b.record.stars.stars || 0) : 0;
+                if (starA !== starB) return starB - starA;
                 const rA = Number(a.record.roundCount || 0);
                 const rB = Number(b.record.roundCount || 0);
                 if (rA !== rB) return rA - rB;
@@ -6873,8 +6918,9 @@
             `残血 ${Utils.formatPercent(Number(record.remainHpRate || 0))}`,
         ];
         if (record.stars) {
-            const starCount = [record.stars.oneStar, record.stars.twoStar, record.stars.threeStar].filter(Boolean).length;
-            parts.push(`${starCount}星`);
+            const starCount = Number(record.stars.stars != null ? record.stars.stars : [record.stars.oneStar, record.stars.twoStar, record.stars.threeStar].filter(Boolean).length);
+            const starIcons = '★'.repeat(Math.min(3, Math.max(0, starCount))) + '☆'.repeat(Math.max(0, 3 - starCount));
+            parts.push(`${starIcons} (${starCount}星)`);
         }
         return parts.join(' | ');
     }
