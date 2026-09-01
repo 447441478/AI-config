@@ -6822,6 +6822,8 @@
         "9": "https://xxz-xyzw-res.hortorgames.com/remote/icons/native/a5/a59734bc-12d2-4959-a2ce-12c3a3c1be88.469fc.png"
     };
 
+    var _heroIconUrlCache = Object.create(null);
+
     function formatCandidateSummary(candidate, toyId) {
         const items = candidate.battleTeam || [];
         if (!items.length) return '<span style="color:#a0aec0;font-size:10px;">暂无阵容信息</span>';
@@ -6842,13 +6844,17 @@
         const toyHtml = toyUrl ? `<img class="sim-toy-icon-img" src="${toyUrl}" onerror="this.style.display='none'">` : '';
         const heroHtml = items.map((item) => {
             const displayId = skinMap.get(Number(item.pos)) || item.heroId;
-            return `<img class="sim-hero-icon-img" data-hero-id="${displayId}" src="" onerror="if(this.src.endsWith('.png'))this.src=this.src.replace('.png','.pvr');else if(this.src.endsWith('.pvr'))this.src=this.src.replace('.pvr','.png');">`;
+            const cachedUrl = _heroIconUrlCache[displayId] || '';
+            return `<img class="sim-hero-icon-img" data-hero-id="${displayId}" src="${cachedUrl}" onerror="if(this.src.endsWith('.png'))this.src=this.src.replace('.png','.pvr');else if(this.src.endsWith('.pvr'))this.src=this.src.replace('.pvr','.png');">`;
         }).join('');
         return toyHtml + heroHtml;
     }
 
     function loadHeroIconUrl(heroId) {
         if (!heroId) return Promise.resolve('');
+        if (_heroIconUrlCache[heroId]) {
+            return Promise.resolve(_heroIconUrlCache[heroId]);
+        }
         try {
             const Configs = Utils.safeCall(() => Runtime.getConfigs(), null);
             if (!Configs || !Configs.AvatarConf) return Promise.resolve('');
@@ -6864,6 +6870,7 @@
                     if (url.startsWith('assets/')) {
                         url = 'https://xxz-xyzw-res.hortorgames.com/remote/' + url.substring(7);
                     }
+                    _heroIconUrlCache[heroId] = url;
                     resolve(url);
                 });
             });
@@ -7063,27 +7070,66 @@
             if (_lastReportSignature !== '__empty__') {
                 body.className = 'xc-report';
                 body.textContent = '暂无结果';
+                delete body.dataset.structureSig;
                 _lastReportSignature = '__empty__';
             }
             return;
         }
         if (reports && reports.length) {
-            const sig = 'html:' + reports.map(r => `${r.reportId || ''}_${r.totalCount || 0}_${r.winCount || 0}_${r.winRate || 0}_${r.isInterim ? 1 : 0}`).join('|') + `:${reportView.title || ''}`;
-            if (sig === _lastReportSignature) return;
-            _lastReportSignature = sig;
+            const structureSig = 'html_struct:' + reports.map(r => r.candidate && r.candidate.signature ? r.candidate.signature : (r.signature || '')).join('|');
+            const dataSig = 'html_data:' + reports.map(r => `${r.totalCount || 0}_${r.winCount || 0}_${r.winRate || 0}_${r.isInterim ? 1 : 0}`).join('|') + `:${reportView.title || ''}`;
+            
+            if (dataSig === _lastReportSignature) {
+                return;
+            }
+            _lastReportSignature = dataSig;
+
+            const existingTitle = body.querySelector('.xc-report-title');
+            const existingItems = body.querySelectorAll('.xc-report-item');
+
+            // 局部无损更新：DOM 结构存在且阵容一致时，只更新数据文本，完全不触碰图片 DOM，彻底消除闪烁
+            if (body.classList.contains('xc-report-html') && existingItems.length === reports.length && body.dataset.structureSig === structureSig) {
+                if (existingTitle) {
+                    existingTitle.textContent = reportView.title || '';
+                }
+                reports.forEach((report, index) => {
+                    const itemEl = existingItems[index];
+                    if (!itemEl) return;
+                    const statsEl = itemEl.querySelector('.xc-report-stats');
+                    const extraEl = itemEl.querySelector('.xc-report-extra');
+                    const statusTag = report.isInterim ? ` [模拟中 ${report.totalCount}/${report.totalTargetCount || report.totalCount}]` : '';
+                    const stats = `胜率 ${Utils.formatPercent(report.winRate)} 次数 ${report.totalCount}${statusTag}`;
+                    let extra = '';
+                    if (report.starRates && report.starRates.one > 0) {
+                        extra = `1星 ${Utils.formatPercent(report.starRates.one)} 2星 ${Utils.formatPercent(report.starRates.two)} 3星 ${Utils.formatPercent(report.starRates.three)}`;
+                    } else {
+                        extra = `平均回合 ${Utils.formatNumber(report.avgRounds)} 平均剩余 ${Utils.formatNumber(report.avgRemainingUnits)}`;
+                    }
+                    const seedText = report.firstWinSeed != null ? ` | 首胜Seed ${report.firstWinSeed}` : '';
+                    if (statsEl) statsEl.textContent = stats;
+                    if (extraEl) extraEl.textContent = `${extra}${seedText}`;
+                });
+                return;
+            }
+
+            // 结构变化时全量渲染
+            body.dataset.structureSig = structureSig;
             body.className = 'xc-report xc-report-html';
             body.innerHTML = buildReportBodyHTML(reportView.title, reports);
             body.querySelectorAll('.sim-hero-icon-img').forEach(async (img) => {
                 const heroId = img.dataset.heroId;
                 if (heroId) {
                     const url = await loadHeroIconUrl(parseInt(heroId));
-                    if (url) img.src = url;
+                    if (url && img.src !== url) {
+                        img.src = url;
+                    }
                 }
             });
         } else {
             const sig = 'text:' + reportView.title + ':' + reportView.text;
             if (sig === _lastReportSignature) return;
             _lastReportSignature = sig;
+            delete body.dataset.structureSig;
             body.className = 'xc-report';
             body.textContent = `${reportView.title}\n${reportView.text}`;
         }
