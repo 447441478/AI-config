@@ -4422,6 +4422,17 @@
                 stars += 1;
             }
         }
+        // 星级挑战最高星级（3星满星）规则修正：
+        // 满星必须同时满足限定回合（如第5关<=4回合）且 5名武将全部存活（aliveCount >= 5）！
+        // 若有任何武将阵亡（存活数 < 5），则不能判定为 3星，最高只能获得 2星。
+        const normalizedBossId = Number(bossId || 0);
+        if (stars >= 3) {
+            if (aliveCount < 5) {
+                stars = 2;
+            } else if (normalizedBossId === 5 && roundCount > 4) {
+                stars = 2;
+            }
+        }
         return {
             stars,
             oneStar: stars >= 1,
