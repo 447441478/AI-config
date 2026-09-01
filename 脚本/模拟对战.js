@@ -4393,17 +4393,23 @@
                 threeStar: false,
             };
         }
+        const normalizedBossId = Number(bossId || 0);
         const Configs = Utils.safeCall(() => Runtime.getConfigs(), null);
-        let conf = getNightmareStarConfigByBossId(bossId);
+        let conf = getNightmareStarConfigByBossId(normalizedBossId);
         if (!conf && Configs && Configs.NightMareStarConf && typeof Configs.NightMareStarConf.getByBossId === 'function') {
-            conf = Utils.safeCall(() => Configs.NightMareStarConf.getByBossId(bossId), null);
+            conf = Utils.safeCall(() => Configs.NightMareStarConf.getByBossId(normalizedBossId), null);
         }
         if (!conf || !Array.isArray(conf.nightMareStarConditionType) || !conf.nightMareStarConditionType.length) {
-            conf = getNightmareStarFallbackConditions(bossId);
+            conf = getNightmareStarFallbackConditions(normalizedBossId);
         }
         const conditionType = Configs && Configs.NightMareStarConditionType ? Configs.NightMareStarConditionType : {};
         const roundCount = extractRoundCount(result);
         const aliveCount = countAlive(extractSponsorTeamInfo(result));
+
+        // 星级挑战各关卡第 3 星（满星）要求的最小存活人数：
+        // 第 1 关: 3 人；第 2、3 关: 4 人；第 4 关及以上（包括第 5 关）: 必须 5 人全部存活
+        const requiredFullStarAlive = normalizedBossId >= 4 ? 5 : (normalizedBossId >= 2 ? 4 : (normalizedBossId === 1 ? 3 : 5));
+
         let stars = 0;
         const types = conf.nightMareStarConditionType || [];
         const values = conf.nightMareStarConditionValue || [];
@@ -4411,28 +4417,36 @@
             const type = types[i];
             const value = values[i] || [];
             let passed = false;
-            if (type === conditionType.STAR_CONDITION_ROUND || type === 1 || String(type) === '1') {
-                passed = roundCount > 0 && roundCount <= Number(value[0] || 0);
+
+            if (i === 2) {
+                // 第 3 个条件（满星条件）：
+                // 回合数必须 <= maxRound（通常为 4 回合，第 1 关为 5 回合），且存活人数必须达到关卡满星要求（第 5 关必须全部 5 人存活）
+                const maxRound = Number(value[0] || (normalizedBossId === 1 ? 5 : 4));
+                const confAlive = Number(value[1] || 0);
+                const minAlive = Math.max(confAlive, requiredFullStarAlive);
+                passed = roundCount > 0 && roundCount <= maxRound && aliveCount >= minAlive;
             } else if (type === conditionType.STAR_CONDITION_ROUND_HEROALIVE || type === 2 || String(type) === '2') {
                 const maxRound = Number(value[0] || 0);
                 const minAlive = Number(value[1] || 1);
                 passed = roundCount > 0 && roundCount <= maxRound && aliveCount >= minAlive;
+            } else if (type === conditionType.STAR_CONDITION_ROUND || type === 1 || String(type) === '1') {
+                passed = roundCount > 0 && roundCount <= Number(value[0] || 0);
+            } else {
+                passed = roundCount > 0 && roundCount <= Number(value[0] || 0);
             }
+
             if (passed) {
                 stars += 1;
             }
         }
-        // 星级挑战最高星级（3星满星）规则修正：
-        // 满星必须同时满足限定回合（如第5关<=4回合）且 5名武将全部存活（aliveCount >= 5）！
-        // 若有任何武将阵亡（存活数 < 5），则不能判定为 3星，最高只能获得 2星。
-        const normalizedBossId = Number(bossId || 0);
-        if (stars >= 3) {
-            if (aliveCount < 5) {
-                stars = 2;
-            } else if (normalizedBossId === 5 && roundCount > 4) {
-                stars = 2;
-            }
+
+        // 严格安全守护：如果是第 4 关及以上（包括第 5 关），如果存活人数 < 5，绝不能判为 3 星！
+        if (normalizedBossId >= 4 && aliveCount < 5 && stars >= 3) {
+            stars = 2;
+        } else if (normalizedBossId >= 2 && aliveCount < 4 && stars >= 3) {
+            stars = 2;
         }
+
         return {
             stars,
             oneStar: stars >= 1,
@@ -5519,27 +5533,35 @@
         };
     }
 
-    function buildNightmareStarConditionDescriptions(conf) {
+    function buildNightmareStarConditionDescriptions(conf, bossId = null) {
         if (!conf || typeof conf !== 'object') {
             return [];
         }
+        const normalizedBossId = Number(bossId || getNumericFieldValue(conf, ['bossId', 'id', 'ID'], 0));
+        const requiredFullStarAlive = normalizedBossId >= 4 ? 5 : (normalizedBossId >= 2 ? 4 : (normalizedBossId === 1 ? 3 : 5));
         const Configs = Utils.safeCall(() => Runtime.getConfigs(), null);
         const conditionType = Configs && Configs.NightMareStarConditionType ? Configs.NightMareStarConditionType : {};
         const types = Array.isArray(conf.nightMareStarConditionType) ? conf.nightMareStarConditionType : [];
         const values = Array.isArray(conf.nightMareStarConditionValue) ? conf.nightMareStarConditionValue : [];
         return types.map((type, index) => {
             const rawValue = Array.isArray(values[index]) ? values[index] : [];
-            if (type === conditionType.STAR_CONDITION_ROUND) {
-                const maxRound = Number(rawValue[0] || 0);
-                return maxRound > 0 ? `${maxRound}回合内完成关卡` : '';
+            if (index === 2) {
+                const maxRound = Number(rawValue[0] || (normalizedBossId === 1 ? 5 : 4));
+                const minAlive = Math.max(Number(rawValue[1] || 0), requiredFullStarAlive);
+                const aliveText = minAlive >= 5 ? '且所有咸将存活' : `且至少${minAlive}名咸将存活`;
+                return `${maxRound}回合内完成关卡${aliveText}`;
             }
-            if (type === conditionType.STAR_CONDITION_ROUND_HEROALIVE) {
+            if (type === conditionType.STAR_CONDITION_ROUND_HEROALIVE || type === 2 || String(type) === '2') {
                 const maxRound = Number(rawValue[0] || 0);
                 const minAlive = Number(rawValue[1] || 0);
                 const aliveText = minAlive >= 5
                     ? '且所有咸将存活'
                     : minAlive > 0 ? `且至少${minAlive}名咸将存活` : '';
                 return maxRound > 0 ? `${maxRound}回合内完成关卡${aliveText}` : aliveText;
+            }
+            if (type === conditionType.STAR_CONDITION_ROUND || type === 1 || String(type) === '1') {
+                const maxRound = Number(rawValue[0] || 0);
+                return maxRound > 0 ? `${maxRound}回合内完成关卡` : '';
             }
             return '';
         }).filter(Boolean);
