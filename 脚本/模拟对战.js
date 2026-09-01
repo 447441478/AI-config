@@ -6525,9 +6525,10 @@
         }
     }
 
-    async function evaluateCandidate(adapter, draft, candidate, seeds, progressLabel) {
+    async function evaluateCandidate(adapter, draft, candidate, seeds, progressLabel, onProgress = null) {
         const aggregate = initEmptyAggregate(seeds.length);
         const replayBundle = captureReplayBundleFromDraft(draft, candidate);
+        let lastRenderTime = 0;
         for (let i = 0; i < seeds.length; i += 1) {
             if (state.stopRequested) {
                 break;
@@ -6556,12 +6557,53 @@
                 aggregate.star2Count += single.stats.stars.twoStar ? 1 : 0;
                 aggregate.star3Count += single.stats.stars.threeStar ? 1 : 0;
             }
-            if (state.panel && (i === 0 || (i + 1) % 5 === 0 || i === seeds.length - 1)) {
-                renderLastReport({
-                    title: `${progressLabel} ${formatSignatureShort(candidate.signature)}`,
-                    text: `进度 ${i + 1}/${seeds.length}，当前胜率 ${Utils.formatPercent(aggregate.winCount / aggregate.finishedCount)}`,
-                });
-                await Utils.sleep(8);
+            const now = Utils.now();
+            const isFirst = i === 0;
+            const isLast = i === seeds.length - 1;
+            const shouldRender = isFirst || isLast || (now - lastRenderTime >= 80) || ((i + 1) % 10 === 0);
+            if (shouldRender) {
+                lastRenderTime = now;
+                const finished = Math.max(aggregate.finishedCount, 1);
+                const interimReport = {
+                    reportId: `${adapter.key}:${candidate.id || candidate.signature || 'candidate'}:interim`,
+                    candidateId: candidate.id,
+                    signature: candidate.signature,
+                    candidate,
+                    totalCount: aggregate.finishedCount,
+                    totalTargetCount: seeds.length,
+                    winCount: aggregate.winCount,
+                    winRate: aggregate.winCount / finished,
+                    firstWinSeed: aggregate.firstWinSeed,
+                    avgRounds: aggregate.roundSum / finished,
+                    avgRemainingUnits: aggregate.aliveSum / finished,
+                    avgRemainingHpRate: aggregate.remainHpRateSum / finished,
+                    replayInput: aggregate.replayInput,
+                    starRates: {
+                        one: aggregate.star1Count / finished,
+                        two: aggregate.star2Count / finished,
+                        three: aggregate.star3Count / finished,
+                    },
+                    adapterKey: adapter.key,
+                    capability: draft.capability,
+                    context: draft.context,
+                    replayBundle,
+                    seedRecords: aggregate.seedRecords,
+                    isInterim: !isLast,
+                };
+                if (typeof onProgress === 'function') {
+                    onProgress(interimReport, i + 1, seeds.length);
+                } else {
+                    state.lastSingleRun = null;
+                    state.lastDebugError = null;
+                    state.lastReport = interimReport;
+                    state.lastReports = [interimReport];
+                    renderLastReport({
+                        title: `${draft.label} 模拟中 (${i + 1}/${seeds.length})`,
+                        text: buildReportSummary(interimReport),
+                    }, [interimReport]);
+                    renderSeedRecords();
+                }
+                await Utils.sleep(1);
             }
         }
         const finished = Math.max(aggregate.finishedCount, 1);
@@ -6571,6 +6613,7 @@
             signature: candidate.signature,
             candidate,
             totalCount: aggregate.finishedCount,
+            totalTargetCount: seeds.length,
             winCount: aggregate.winCount,
             winRate: aggregate.winCount / finished,
             firstWinSeed: aggregate.firstWinSeed,
@@ -6996,7 +7039,8 @@
         const items = reports.map((report, index) => {
             const prefix = reports.length > 1 ? `<span style="font-weight:600;color:#718096;">${index + 1}.</span> ` : '';
             const heroImgs = report.candidate ? formatCandidateSummary(report.candidate) : '';
-            const stats = `胜率 ${Utils.formatPercent(report.winRate)} 次数 ${report.totalCount}`;
+            const statusTag = report.isInterim ? `<span style="font-size:10px; color:#3182ce; background:#ebf8ff; padding:1px 5px; border-radius:3px; margin-left:6px; font-weight:normal;">模拟中 ${report.totalCount}/${report.totalTargetCount || report.totalCount}</span>` : '';
+            const stats = `胜率 ${Utils.formatPercent(report.winRate)} 次数 ${report.totalCount}${statusTag}`;
             let extra = '';
             if (report.starRates && report.starRates.one > 0) {
                 extra = `1星 ${Utils.formatPercent(report.starRates.one)} 2星 ${Utils.formatPercent(report.starRates.two)} 3星 ${Utils.formatPercent(report.starRates.three)}`;
@@ -7024,7 +7068,7 @@
             return;
         }
         if (reports && reports.length) {
-            const sig = 'html:' + reports.map(r => r.reportId || r.signature || '').join('|');
+            const sig = 'html:' + reports.map(r => `${r.reportId || ''}_${r.totalCount || 0}_${r.winCount || 0}_${r.winRate || 0}_${r.isInterim ? 1 : 0}`).join('|') + `:${reportView.title || ''}`;
             if (sig === _lastReportSignature) return;
             _lastReportSignature = sig;
             body.className = 'xc-report xc-report-html';
@@ -8595,7 +8639,17 @@
             await adapter.ensureAuthorityData();
             const draft = adapter.buildDraft(candidate);
             const seeds = buildSeedList(draft, sampleCount, candidate.signature);
-            const report = await evaluateCandidate(adapter, draft, candidate, seeds, title);
+            const report = await evaluateCandidate(adapter, draft, candidate, seeds, title, (interimReport, current, total) => {
+                state.lastSingleRun = null;
+                state.lastDebugError = null;
+                state.lastReport = interimReport;
+                state.lastReports = [interimReport];
+                renderLastReport({
+                    title: `${draft.label} 模拟中 (${current}/${total})`,
+                    text: buildReportSummary(interimReport),
+                }, [interimReport]);
+                renderSeedRecords();
+            });
             state.lastSingleRun = null;
             state.lastDebugError = null;
             state.lastReport = report;
@@ -8605,6 +8659,7 @@
                 title: `${draft.label} 单队模拟`,
                 text: buildReportSummary(report),
             }, [report]);
+            renderSeedRecords();
             renderPanel();
             return report;
         });
@@ -8629,8 +8684,26 @@
                 }
                 const candidate = state.candidates[i];
                 const draft = adapter.buildDraft(candidate);
-                const report = await evaluateCandidate(adapter, draft, candidate, seeds, `批量比较 ${i + 1}/${state.candidates.length}`);
+                const report = await evaluateCandidate(adapter, draft, candidate, seeds, `批量比较 ${i + 1}/${state.candidates.length}`, (interimReport, current, total) => {
+                    const currentReports = [...reports, interimReport];
+                    state.lastSingleRun = null;
+                    state.lastDebugError = null;
+                    state.lastReport = interimReport;
+                    state.lastReports = currentReports;
+                    renderLastReport({
+                        title: `${referenceDraft.label} 批量比较 (${i + 1}/${state.candidates.length})`,
+                        text: currentReports.map((item, idx) => `${idx + 1}. ${buildReportSummary(item)}`).join('\n'),
+                    }, currentReports);
+                    renderSeedRecords();
+                });
                 reports.push(report);
+                state.lastReports = [...reports];
+                state.lastReport = report;
+                renderLastReport({
+                    title: `${referenceDraft.label} 批量比较 (${i + 1}/${state.candidates.length})`,
+                    text: reports.map((item, idx) => `${idx + 1}. ${buildReportSummary(item)}`).join('\n'),
+                }, reports);
+                renderSeedRecords();
             }
             reports.sort(compareReports);
             reports.slice(1).forEach((item) => {
@@ -8651,6 +8724,7 @@
                     text: reports.slice(0, 5).map((item, index) => `${index + 1}. ${buildReportSummary(item)}`).join('\n'),
                 }, reports.slice(0, 5));
             }
+            renderSeedRecords();
             renderPanel();
             return reports;
         });
