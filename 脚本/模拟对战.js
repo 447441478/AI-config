@@ -64,7 +64,6 @@
         targetMajor: '',
         targetMinor: '',
         sampleCount: `${DEFAULT_SAMPLE_COUNT}`,
-        seedOnlyWin: false,
         seedSort: 'default',
     };
 
@@ -132,7 +131,6 @@
             sourceId: '',
             page: 0,
             selectedIndex: 0,
-            onlyWin: false,
             sortBy: 'default',
         },
         mainPush: {
@@ -374,17 +372,14 @@
             const raw = localStorage.getItem(STORAGE_KEYS.panelState);
             if (!raw) {
                 state.panelPrefs = Object.assign({}, DEFAULT_PANEL_PREFS);
-                state.seedRecordView.onlyWin = false;
                 state.seedRecordView.sortBy = 'default';
                 return;
             }
             const parsed = JSON.parse(raw);
             state.panelPrefs = Object.assign({}, DEFAULT_PANEL_PREFS, parsed || {});
-            state.seedRecordView.onlyWin = !!state.panelPrefs.seedOnlyWin;
             state.seedRecordView.sortBy = state.panelPrefs.seedSort || 'default';
         } catch (error) {
             state.panelPrefs = Object.assign({}, DEFAULT_PANEL_PREFS);
-            state.seedRecordView.onlyWin = false;
             state.seedRecordView.sortBy = 'default';
         }
     }
@@ -3911,7 +3906,6 @@
         state.seedRecordView.sourceId = report && report.reportId ? String(report.reportId) : '';
         state.seedRecordView.page = 0;
         state.seedRecordView.selectedIndex = 0;
-        state.seedRecordView.onlyWin = !!state.panelPrefs.seedOnlyWin;
         state.seedRecordView.sortBy = state.panelPrefs.seedSort || 'default';
     }
 
@@ -6826,16 +6820,12 @@
         if (!report || !Array.isArray(report.seedRecords)) {
             return [];
         }
-        const onlyWin = !!(state.seedRecordView && state.seedRecordView.onlyWin);
         const sortBy = (state.seedRecordView && state.seedRecordView.sortBy) || 'default';
         const list = report.seedRecords;
         let items = [];
         for (let i = 0; i < list.length; i += 1) {
             const record = list[i];
             if (!record) continue;
-            if (onlyWin && !record.isWin) {
-                continue;
-            }
             items.push({ record, rawIndex: i });
         }
         if (sortBy === 'roundAsc') {
@@ -6941,9 +6931,6 @@
             refs.seedList.innerHTML = '';
             return;
         }
-        if (refs.seedOnlyWinCheckbox) {
-            refs.seedOnlyWinCheckbox.checked = !!state.seedRecordView.onlyWin;
-        }
         if (refs.seedSortSelect) {
             refs.seedSortSelect.value = state.seedRecordView.sortBy || 'default';
         }
@@ -6952,20 +6939,15 @@
         const filteredRecords = getFilteredSeedRecords(report);
         const winCount = Number(report.winCount || 0);
         const loseCount = Math.max(0, allRecords.length - winCount);
-        const isOnlyWin = !!state.seedRecordView.onlyWin;
         const page = Number(state.seedRecordView.page || 0);
         const start = page * SEED_RECORD_PAGE_SIZE;
         const pageRecords = filteredRecords.slice(start, start + SEED_RECORD_PAGE_SIZE);
         const totalPage = Math.max(1, Math.ceil(filteredRecords.length / SEED_RECORD_PAGE_SIZE));
         refs.seedSection.style.display = 'block';
-        if (isOnlyWin) {
-            refs.seedSummary.textContent = `胜 ${winCount} 场 / 共 ${allRecords.length} 场`;
-        } else {
-            refs.seedSummary.textContent = `共 ${allRecords.length} 场 | 胜 ${winCount} | 负 ${loseCount}`;
-        }
+        refs.seedSummary.textContent = `共 ${allRecords.length} 场 | 胜 ${winCount} | 负 ${loseCount}`;
         refs.seedPager.textContent = filteredRecords.length ? `${page + 1} / ${totalPage}` : '0 / 0';
         if (!pageRecords.length) {
-            refs.seedList.innerHTML = `<div class="sim-seed-empty" style="text-align:center; padding:12px 0; color:var(--xc-text-muted); font-size:11px;">${isOnlyWin ? '暂无胜利记录' : '暂无种子记录'}</div>`;
+            refs.seedList.innerHTML = `<div class="sim-seed-empty" style="text-align:center; padding:12px 0; color:var(--xc-text-muted); font-size:11px;">暂无种子记录</div>`;
             return;
         }
         refs.seedList.innerHTML = pageRecords.map((item, offset) => {
@@ -9569,9 +9551,6 @@
             .xc-seed-id { color: #a0aec0; font-size: 10px; }
             .xc-seed-detail { color: #718096; font-size: 10px; margin-top: 2px; }
             .xc-seed-replay { flex-shrink: 0; padding: 2px 8px; font-size: 10px; border-radius: 4px; background: #fff; border: 1px solid #e2e8f0; color: var(--xc-text-muted); cursor: pointer; }
-            .xc-seed-filter { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--xc-primary); cursor: pointer; user-select: none; }
-            .xc-seed-filter input { margin: 0; cursor: pointer; accent-color: var(--xc-primary); width: 13px; height: 13px; }
-            .xc-seed-filter:hover { opacity: 0.85; }
             .xc-seed-sort-select { height: 22px; min-height: 22px; padding: 0 4px; font-size: 11px; color: var(--xc-text); background: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; outline: none; cursor: pointer; }
             .xc-seed-sort-select:focus { border-color: var(--xc-primary-border); }
             .xc-log-stream { max-height: 150px; overflow-y: auto; overflow-x: hidden; font-size: 11px; line-height: 1.5; color: var(--xc-text-muted); white-space: pre-wrap; word-break: break-all; }
@@ -9694,10 +9673,6 @@
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:4px;">
                             <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                                 <div class="xc-section-title" style="margin:0;">种子记录</div>
-                                <label class="xc-seed-filter" title="仅查看胜利的对战种子">
-                                    <input type="checkbox" data-ref="seedOnlyWinCheckbox">
-                                    <span>仅看胜利</span>
-                                </label>
                                 <select data-ref="seedSortSelect" class="xc-seed-sort-select" title="种子排序方式">
                                     <option value="default">默认顺序</option>
                                     <option value="roundAsc">回合 ↑ (少到多)</option>
@@ -9818,17 +9793,6 @@
             state.panelPrefs.sampleCount = text || state.panelPrefs.sampleCount || `${DEFAULT_SAMPLE_COUNT}`;
             savePanelState();
         });
-        if (refs.seedOnlyWinCheckbox) {
-            refs.seedOnlyWinCheckbox.addEventListener('change', () => {
-                const isChecked = refs.seedOnlyWinCheckbox.checked;
-                state.seedRecordView.onlyWin = isChecked;
-                state.panelPrefs.seedOnlyWin = isChecked;
-                state.seedRecordView.page = 0;
-                state.seedRecordView.selectedIndex = 0;
-                savePanelState();
-                renderSeedRecords();
-            });
-        }
         if (refs.seedSortSelect) {
             refs.seedSortSelect.addEventListener('change', () => {
                 const sortBy = refs.seedSortSelect.value || 'default';
