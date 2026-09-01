@@ -65,6 +65,7 @@
         targetMinor: '',
         sampleCount: `${DEFAULT_SAMPLE_COUNT}`,
         seedOnlyWin: false,
+        seedSort: 'default',
     };
 
     const PVP_MODE_NAMES = new Set([
@@ -132,6 +133,7 @@
             page: 0,
             selectedIndex: 0,
             onlyWin: false,
+            sortBy: 'default',
         },
         mainPush: {
             isRunning: false,
@@ -373,14 +375,17 @@
             if (!raw) {
                 state.panelPrefs = Object.assign({}, DEFAULT_PANEL_PREFS);
                 state.seedRecordView.onlyWin = false;
+                state.seedRecordView.sortBy = 'default';
                 return;
             }
             const parsed = JSON.parse(raw);
             state.panelPrefs = Object.assign({}, DEFAULT_PANEL_PREFS, parsed || {});
             state.seedRecordView.onlyWin = !!state.panelPrefs.seedOnlyWin;
+            state.seedRecordView.sortBy = state.panelPrefs.seedSort || 'default';
         } catch (error) {
             state.panelPrefs = Object.assign({}, DEFAULT_PANEL_PREFS);
             state.seedRecordView.onlyWin = false;
+            state.seedRecordView.sortBy = 'default';
         }
     }
 
@@ -3907,6 +3912,7 @@
         state.seedRecordView.page = 0;
         state.seedRecordView.selectedIndex = 0;
         state.seedRecordView.onlyWin = !!state.panelPrefs.seedOnlyWin;
+        state.seedRecordView.sortBy = state.panelPrefs.seedSort || 'default';
     }
 
     function normalizeSampleCount(rawValue, fallback = DEFAULT_SAMPLE_COUNT) {
@@ -6779,17 +6785,53 @@
             return [];
         }
         const onlyWin = !!(state.seedRecordView && state.seedRecordView.onlyWin);
+        const sortBy = (state.seedRecordView && state.seedRecordView.sortBy) || 'default';
         const list = report.seedRecords;
-        if (!onlyWin) {
-            return list.map((record, index) => ({ record, rawIndex: index }));
-        }
-        const filtered = [];
+        let items = [];
         for (let i = 0; i < list.length; i += 1) {
-            if (list[i] && list[i].isWin) {
-                filtered.push({ record: list[i], rawIndex: i });
+            const record = list[i];
+            if (!record) continue;
+            if (onlyWin && !record.isWin) {
+                continue;
             }
+            items.push({ record, rawIndex: i });
         }
-        return filtered;
+        if (sortBy === 'roundAsc') {
+            items.sort((a, b) => {
+                const rA = Number(a.record.roundCount || 0);
+                const rB = Number(b.record.roundCount || 0);
+                if (rA !== rB) return rA - rB;
+                return a.rawIndex - b.rawIndex;
+            });
+        } else if (sortBy === 'roundDesc') {
+            items.sort((a, b) => {
+                const rA = Number(a.record.roundCount || 0);
+                const rB = Number(b.record.roundCount || 0);
+                if (rA !== rB) return rB - rA;
+                return a.rawIndex - b.rawIndex;
+            });
+        } else if (sortBy === 'winDesc') {
+            items.sort((a, b) => {
+                const winA = a.record.isWin ? 1 : 0;
+                const winB = b.record.isWin ? 1 : 0;
+                if (winA !== winB) return winB - winA;
+                const rA = Number(a.record.roundCount || 0);
+                const rB = Number(b.record.roundCount || 0);
+                if (rA !== rB) return rA - rB;
+                return a.rawIndex - b.rawIndex;
+            });
+        } else if (sortBy === 'winAsc') {
+            items.sort((a, b) => {
+                const winA = a.record.isWin ? 1 : 0;
+                const winB = b.record.isWin ? 1 : 0;
+                if (winA !== winB) return winA - winB;
+                const rA = Number(a.record.roundCount || 0);
+                const rB = Number(b.record.roundCount || 0);
+                if (rA !== rB) return rA - rB;
+                return a.rawIndex - b.rawIndex;
+            });
+        }
+        return items;
     }
 
     function ensureSeedRecordViewState(report) {
@@ -6855,6 +6897,9 @@
         }
         if (refs.seedOnlyWinCheckbox) {
             refs.seedOnlyWinCheckbox.checked = !!state.seedRecordView.onlyWin;
+        }
+        if (refs.seedSortSelect) {
+            refs.seedSortSelect.value = state.seedRecordView.sortBy || 'default';
         }
         ensureSeedRecordViewState(report);
         const allRecords = report.seedRecords || [];
@@ -9481,6 +9526,8 @@
             .xc-seed-filter { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: var(--xc-primary); cursor: pointer; user-select: none; }
             .xc-seed-filter input { margin: 0; cursor: pointer; accent-color: var(--xc-primary); width: 13px; height: 13px; }
             .xc-seed-filter:hover { opacity: 0.85; }
+            .xc-seed-sort-select { height: 22px; min-height: 22px; padding: 0 4px; font-size: 11px; color: var(--xc-text); background: #ffffff; border: 1px solid #e2e8f0; border-radius: 4px; outline: none; cursor: pointer; }
+            .xc-seed-sort-select:focus { border-color: var(--xc-primary-border); }
             .xc-log-stream { max-height: 150px; overflow-y: auto; overflow-x: hidden; font-size: 11px; line-height: 1.5; color: var(--xc-text-muted); white-space: pre-wrap; word-break: break-all; }
             .mp-head { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; overflow: hidden; }
             .mp-tag { font-size: 12px; padding: 3px 8px; background: #e6fffa; color: #319795; border-radius: 4px; line-height: 1.6; white-space: nowrap; }
@@ -9598,13 +9645,20 @@
                         <div class="xc-report" data-ref="reportBody">暂无日志内容</div>
                     </div>
                     <div class="xc-card" data-ref="seedSection" style="display:none;">
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                            <div style="display:flex; align-items:center; gap:8px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:4px;">
+                            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
                                 <div class="xc-section-title" style="margin:0;">种子记录</div>
                                 <label class="xc-seed-filter" title="仅查看胜利的对战种子">
                                     <input type="checkbox" data-ref="seedOnlyWinCheckbox">
                                     <span>仅看胜利</span>
                                 </label>
+                                <select data-ref="seedSortSelect" class="xc-seed-sort-select" title="种子排序方式">
+                                    <option value="default">默认顺序</option>
+                                    <option value="roundAsc">回合 ↑ (少到多)</option>
+                                    <option value="roundDesc">回合 ↓ (多到少)</option>
+                                    <option value="winDesc">胜利优先</option>
+                                    <option value="winAsc">失败优先</option>
+                                </select>
                             </div>
                             <span data-ref="seedSummary" style="font-size:11px; color:var(--xc-text-muted);">暂无</span>
                         </div>
@@ -9723,6 +9777,17 @@
                 const isChecked = refs.seedOnlyWinCheckbox.checked;
                 state.seedRecordView.onlyWin = isChecked;
                 state.panelPrefs.seedOnlyWin = isChecked;
+                state.seedRecordView.page = 0;
+                state.seedRecordView.selectedIndex = 0;
+                savePanelState();
+                renderSeedRecords();
+            });
+        }
+        if (refs.seedSortSelect) {
+            refs.seedSortSelect.addEventListener('change', () => {
+                const sortBy = refs.seedSortSelect.value || 'default';
+                state.seedRecordView.sortBy = sortBy;
+                state.panelPrefs.seedSort = sortBy;
                 state.seedRecordView.page = 0;
                 state.seedRecordView.selectedIndex = 0;
                 savePanelState();
