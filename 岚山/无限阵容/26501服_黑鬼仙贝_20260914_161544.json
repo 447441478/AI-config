@@ -1,0 +1,3490 @@
+[
+  {
+    "id": 1788921277001,
+    "name": "三蜀",
+    "formation": {
+      "schemaVersion": 2,
+      "bindingMode": "equipment-ledger-v1",
+      "roleId": 664385006,
+      "presetTeamId": 1,
+      "power": 10705072707,
+      "lordWeaponId": 9,
+      "battleTeam": {
+        "0": 110,
+        "1": 106,
+        "2": 118,
+        "3": 104,
+        "4": 121
+      },
+      "heroes": {
+        "104": {
+          "heroId": 104,
+          "level": 6000,
+          "artifactId": 11145,
+          "pearlId": 2,
+          "useSkin": -1,
+          "trump": {
+            "activeId": 360,
+            "inactiveId": 1,
+            "transTrumpId": 600
+          },
+          "equipment": {
+            "1": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 4,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 88,
+                  "isLocked": false,
+                  "allAttrNum": 88000
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 19,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 10,
+                  "attrNum": 2,
+                  "isLocked": false,
+                  "allAttrNum": 2000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1025,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 4725,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 0
+            },
+            "2": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 87,
+                  "isLocked": false,
+                  "allAttrNum": 87000
+                },
+                "2": {
+                  "colorId": 4,
+                  "attrId": 8,
+                  "attrNum": 33,
+                  "isLocked": false,
+                  "allAttrNum": 33000
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 6,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 987,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 18525
+            },
+            "3": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 17,
+                  "attrNum": 4,
+                  "isLocked": false,
+                  "allAttrNum": 4000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 14,
+                  "attrNum": 84,
+                  "isLocked": true,
+                  "allAttrNum": 84000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 85,
+                  "isLocked": true,
+                  "allAttrNum": 85000
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 15,
+                  "attrNum": 57,
+                  "isLocked": true,
+                  "allAttrNum": 57000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 2209,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 10830,
+              "quenchHpExt": 0
+            },
+            "4": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 10,
+                  "attrNum": 2,
+                  "isLocked": false,
+                  "allAttrNum": 2000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 89,
+                  "isLocked": false,
+                  "allAttrNum": 89000
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 19,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 17,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1704,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 30348
+            }
+          },
+          "appendSkill": [
+            1033012
+          ],
+          "bindingMode": "equipment-ledger-v1",
+          "containerId": "eqc_1788921276971_104_pn5m5b"
+        },
+        "106": {
+          "heroId": 106,
+          "level": 6000,
+          "artifactId": 11155,
+          "pearlId": 5,
+          "useSkin": 10603,
+          "trump": {
+            "activeId": 360,
+            "inactiveId": 361,
+            "transTrumpId": 0
+          },
+          "equipment": {
+            "1": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 19,
+              "enchantUId2": 20,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 15,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 83,
+                  "isLocked": true,
+                  "allAttrNum": 83000
+                },
+                "3": {
+                  "colorId": 2,
+                  "attrId": 6,
+                  "attrNum": 8,
+                  "isLocked": false,
+                  "allAttrNum": 8000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 20,
+                  "attrNum": 4,
+                  "isLocked": false,
+                  "allAttrNum": 4000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1049,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 4851,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 0
+            },
+            "2": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 15,
+              "enchantUId2": 16,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 89,
+                  "isLocked": false,
+                  "allAttrNum": 89000
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 14,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 10,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 829,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 16419
+            },
+            "3": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 88,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 2,
+                  "attrNum": 4,
+                  "isLocked": false,
+                  "allAttrNum": 4000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 17,
+                  "attrNum": 92,
+                  "isLocked": true,
+                  "allAttrNum": 92000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 6,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1824,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 9210,
+              "quenchHpExt": 0
+            },
+            "4": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 17,
+              "enchantUId2": 18,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 4,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 17,
+                  "attrNum": 89,
+                  "isLocked": false,
+                  "allAttrNum": 89000
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 11,
+                  "attrNum": 4,
+                  "isLocked": false,
+                  "allAttrNum": 4000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 668,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 12672
+            }
+          },
+          "appendSkill": [],
+          "bindingMode": "equipment-ledger-v1",
+          "containerId": "eqc_1788921276975_106_nbran8"
+        },
+        "110": {
+          "heroId": 110,
+          "level": 6000,
+          "artifactId": 11105,
+          "pearlId": 1,
+          "useSkin": 11001,
+          "trump": {
+            "activeId": 60,
+            "inactiveId": 170,
+            "transTrumpId": 0
+          },
+          "equipment": {
+            "1": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 3,
+              "enchantUId2": 4,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 14,
+                  "attrNum": 87,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 86,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 5,
+                  "attrId": 5,
+                  "attrNum": 56,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 6,
+                  "attrNum": 53,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "5": {
+                  "colorId": 6,
+                  "attrId": 10,
+                  "attrNum": 83,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 11,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 12,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                },
+                "3": {
+                  "colorId": 2,
+                  "attrId": 7,
+                  "attrNum": 9,
+                  "isLocked": false,
+                  "allAttrNum": 9000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 19,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "5": {
+                  "colorId": 2,
+                  "attrId": 6,
+                  "attrNum": 10,
+                  "isLocked": false,
+                  "allAttrNum": 10000
+                }
+              },
+              "quenchTimes": 10350,
+              "quenchTimes2": 10356,
+              "quenchAttackExt": 45492,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 0
+            },
+            "2": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 7,
+              "enchantUId2": 8,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 96,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 16,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 82,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 6,
+                  "attrId": 11,
+                  "attrNum": 86,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 2450,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 49218
+            },
+            "3": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 2,
+                  "attrId": 21,
+                  "attrNum": 8,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 14,
+                  "attrNum": 86,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 84,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 6,
+                  "attrNum": 62,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1004,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 5340,
+              "quenchHpExt": 0
+            },
+            "4": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 13,
+              "enchantUId2": 14,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 83,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 82,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 14,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 11,
+                  "attrNum": 69,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1209,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 23004
+            }
+          },
+          "appendSkill": [
+            1033014
+          ],
+          "bindingMode": "equipment-ledger-v1",
+          "containerId": "eqc_1788921276985_110_ngdnuq"
+        },
+        "118": {
+          "heroId": 118,
+          "level": 6000,
+          "artifactId": 11135,
+          "pearlId": 3,
+          "useSkin": 11806,
+          "trump": {
+            "activeId": 60,
+            "inactiveId": 480,
+            "transTrumpId": 300
+          },
+          "equipment": {
+            "1": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 1,
+              "enchantUId2": 2,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 97,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 83,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 4,
+                  "attrNum": 89,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 6,
+                  "attrId": 15,
+                  "attrNum": 85,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "5": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 96,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {
+                "1": {
+                  "colorId": 2,
+                  "attrId": 17,
+                  "attrNum": 10,
+                  "isLocked": false,
+                  "allAttrNum": 10000
+                },
+                "2": {
+                  "colorId": 2,
+                  "attrId": 2,
+                  "attrNum": 10,
+                  "isLocked": false,
+                  "allAttrNum": 10000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 8,
+                  "attrNum": 95,
+                  "isLocked": false,
+                  "allAttrNum": 95000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 12,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                },
+                "5": {
+                  "colorId": 1,
+                  "attrId": 5,
+                  "attrNum": 4,
+                  "isLocked": false,
+                  "allAttrNum": 4000
+                }
+              },
+              "quenchTimes": 12163,
+              "quenchTimes2": 10113,
+              "quenchAttackExt": 45492,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 0
+            },
+            "2": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 5,
+              "enchantUId2": 6,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 84,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 15,
+                  "attrNum": 92,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 5,
+                  "attrNum": 89,
+                  "isLocked": true,
+                  "allAttrNum": 89000
+                },
+                "4": {
+                  "colorId": 6,
+                  "attrId": 8,
+                  "attrNum": 87,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "5": {
+                  "colorId": 5,
+                  "attrId": 6,
+                  "attrNum": 64,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {
+                "1": {
+                  "colorId": 3,
+                  "attrId": 19,
+                  "attrNum": 15,
+                  "isLocked": false,
+                  "allAttrNum": 15000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 97,
+                  "isLocked": true,
+                  "allAttrNum": 97000
+                },
+                "3": {
+                  "colorId": 2,
+                  "attrId": 20,
+                  "attrNum": 6,
+                  "isLocked": false,
+                  "allAttrNum": 6000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 15,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "5": {
+                  "colorId": 1,
+                  "attrId": 1,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                }
+              },
+              "quenchTimes": 10849,
+              "quenchTimes2": 10009,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 198972
+            },
+            "3": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 5,
+                  "attrId": 9,
+                  "attrNum": 74,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 10,
+                  "attrNum": 84,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 5,
+                  "attrNum": 81,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 1,
+                  "attrNum": 51,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 2660,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 13220,
+              "quenchHpExt": 0
+            },
+            "4": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 11,
+              "enchantUId2": 12,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 81,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 82,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 8,
+                  "attrNum": 88,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 15,
+                  "attrNum": 79,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "5": {
+                  "colorId": 6,
+                  "attrId": 10,
+                  "attrNum": 88,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 4,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 13,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                },
+                "3": {
+                  "colorId": 3,
+                  "attrId": 19,
+                  "attrNum": 12,
+                  "isLocked": false,
+                  "allAttrNum": 12000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 5,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "5": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 82,
+                  "isLocked": false,
+                  "allAttrNum": 82000
+                }
+              },
+              "quenchTimes": 10987,
+              "quenchTimes2": 10037,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 183666
+            }
+          },
+          "appendSkill": [
+            1033015
+          ],
+          "bindingMode": "equipment-ledger-v1",
+          "containerId": "eqc_1788921276996_118_ph63up"
+        },
+        "121": {
+          "heroId": 121,
+          "level": 6000,
+          "artifactId": 11225,
+          "pearlId": 7,
+          "useSkin": 12103,
+          "trump": {
+            "activeId": 360,
+            "inactiveId": 361,
+            "transTrumpId": 0
+          },
+          "equipment": {
+            "1": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 15,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 13,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 86,
+                  "isLocked": false,
+                  "allAttrNum": 86000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 881,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 4266,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 0
+            },
+            "2": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 9,
+              "enchantUId2": 10,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 89,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 5,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 64,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 1326
+            },
+            "3": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 100,
+                  "isLocked": true,
+                  "allAttrNum": 100000
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 20,
+                  "attrNum": 2,
+                  "isLocked": false,
+                  "allAttrNum": 2000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 84,
+                  "isLocked": true,
+                  "allAttrNum": 84000
+                },
+                "4": {
+                  "colorId": 3,
+                  "attrId": 13,
+                  "attrNum": 13,
+                  "isLocked": false,
+                  "allAttrNum": 13000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1580,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 7820,
+              "quenchHpExt": 0
+            },
+            "4": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 90,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 11,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 27,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 540
+            }
+          },
+          "appendSkill": [
+            1033008
+          ],
+          "bindingMode": "equipment-ledger-v1",
+          "containerId": "eqc_1788921276999_121_1zb4uu"
+        }
+      },
+      "enchantMap": {
+        "2": 1,
+        "6": 7,
+        "12": 13
+      },
+      "legionResearch": {
+        "101": 0,
+        "102": 0,
+        "103": 0,
+        "104": 0,
+        "105": 0,
+        "106": 0,
+        "107": 0,
+        "108": 0,
+        "109": 0,
+        "110": 0,
+        "111": 0,
+        "112": 0,
+        "113": 0,
+        "114": 0,
+        "201": 60,
+        "202": 50,
+        "203": 40,
+        "204": 30,
+        "205": 20,
+        "206": 20,
+        "207": 20,
+        "208": 20,
+        "209": 20,
+        "210": 25,
+        "211": 20,
+        "212": 23,
+        "213": 20,
+        "214": 0,
+        "301": 60,
+        "302": 50,
+        "303": 40,
+        "304": 30,
+        "305": 20,
+        "306": 20,
+        "307": 20,
+        "308": 20,
+        "309": 20,
+        "310": 25,
+        "311": 20,
+        "312": 25,
+        "313": 20,
+        "314": 0,
+        "401": 60,
+        "402": 50,
+        "403": 40,
+        "404": 30,
+        "405": 20,
+        "406": 20,
+        "407": 20,
+        "408": 20,
+        "409": 20,
+        "410": 25,
+        "411": 20,
+        "412": 20,
+        "413": 20,
+        "414": 0,
+        "501": 60,
+        "502": 50,
+        "503": 40,
+        "504": 30,
+        "505": 20,
+        "506": 20,
+        "507": 20,
+        "508": 20,
+        "509": 20,
+        "510": 25,
+        "511": 20,
+        "512": 25,
+        "513": 20,
+        "514": 0,
+        "601": 0,
+        "602": 0,
+        "603": 0,
+        "604": 0,
+        "605": 0,
+        "606": 0,
+        "607": 0,
+        "608": 0,
+        "609": 0,
+        "610": 0,
+        "611": 0,
+        "612": 0,
+        "613": 0,
+        "614": 0
+      }
+    },
+    "createDate": "2026-09-09T02:34:37.001Z"
+  },
+  {
+    "id": 1788921377436,
+    "name": "毒",
+    "formation": {
+      "schemaVersion": 2,
+      "bindingMode": "equipment-ledger-v1",
+      "roleId": 664385006,
+      "presetTeamId": 1,
+      "power": 10590623706,
+      "lordWeaponId": 8,
+      "battleTeam": {
+        "0": 120,
+        "1": 119,
+        "2": 108,
+        "3": 113,
+        "4": 112
+      },
+      "heroes": {
+        "108": {
+          "heroId": 108,
+          "level": 6000,
+          "artifactId": 11135,
+          "pearlId": 3,
+          "useSkin": 10805,
+          "trump": {
+            "activeId": 60,
+            "inactiveId": 480,
+            "transTrumpId": 300
+          },
+          "equipment": {
+            "1": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 1,
+              "enchantUId2": 2,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 97,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 83,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 4,
+                  "attrNum": 89,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 6,
+                  "attrId": 15,
+                  "attrNum": 85,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "5": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 96,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {
+                "1": {
+                  "colorId": 2,
+                  "attrId": 17,
+                  "attrNum": 10,
+                  "isLocked": false,
+                  "allAttrNum": 10000
+                },
+                "2": {
+                  "colorId": 2,
+                  "attrId": 2,
+                  "attrNum": 10,
+                  "isLocked": false,
+                  "allAttrNum": 10000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 8,
+                  "attrNum": 95,
+                  "isLocked": false,
+                  "allAttrNum": 95000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 12,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                },
+                "5": {
+                  "colorId": 1,
+                  "attrId": 5,
+                  "attrNum": 4,
+                  "isLocked": false,
+                  "allAttrNum": 4000
+                }
+              },
+              "quenchTimes": 12163,
+              "quenchTimes2": 10113,
+              "quenchAttackExt": 45492,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 0
+            },
+            "2": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 5,
+              "enchantUId2": 6,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 84,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 15,
+                  "attrNum": 92,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 5,
+                  "attrNum": 89,
+                  "isLocked": true,
+                  "allAttrNum": 89000
+                },
+                "4": {
+                  "colorId": 6,
+                  "attrId": 8,
+                  "attrNum": 87,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "5": {
+                  "colorId": 5,
+                  "attrId": 6,
+                  "attrNum": 64,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {
+                "1": {
+                  "colorId": 3,
+                  "attrId": 19,
+                  "attrNum": 15,
+                  "isLocked": false,
+                  "allAttrNum": 15000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 97,
+                  "isLocked": true,
+                  "allAttrNum": 97000
+                },
+                "3": {
+                  "colorId": 2,
+                  "attrId": 20,
+                  "attrNum": 6,
+                  "isLocked": false,
+                  "allAttrNum": 6000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 15,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "5": {
+                  "colorId": 1,
+                  "attrId": 1,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                }
+              },
+              "quenchTimes": 10849,
+              "quenchTimes2": 10009,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 198972
+            },
+            "3": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 5,
+                  "attrId": 9,
+                  "attrNum": 74,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 10,
+                  "attrNum": 84,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 5,
+                  "attrNum": 81,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 1,
+                  "attrNum": 51,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 2660,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 13220,
+              "quenchHpExt": 0
+            },
+            "4": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 11,
+              "enchantUId2": 12,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 81,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 82,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 8,
+                  "attrNum": 88,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 15,
+                  "attrNum": 79,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "5": {
+                  "colorId": 6,
+                  "attrId": 10,
+                  "attrNum": 88,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 4,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 13,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                },
+                "3": {
+                  "colorId": 3,
+                  "attrId": 19,
+                  "attrNum": 12,
+                  "isLocked": false,
+                  "allAttrNum": 12000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 5,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "5": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 82,
+                  "isLocked": false,
+                  "allAttrNum": 82000
+                }
+              },
+              "quenchTimes": 10987,
+              "quenchTimes2": 10037,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 183666
+            }
+          },
+          "appendSkill": [
+            1033015
+          ],
+          "bindingMode": "equipment-ledger-v1",
+          "containerId": "eqc_1788921276996_118_ph63up"
+        },
+        "112": {
+          "heroId": 112,
+          "level": 6000,
+          "artifactId": 11225,
+          "pearlId": 7,
+          "useSkin": 11204,
+          "trump": {
+            "activeId": 360,
+            "inactiveId": 361,
+            "transTrumpId": 0
+          },
+          "equipment": {
+            "1": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 15,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 13,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 86,
+                  "isLocked": false,
+                  "allAttrNum": 86000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 881,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 4266,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 0
+            },
+            "2": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 9,
+              "enchantUId2": 10,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 89,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 5,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 64,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 1326
+            },
+            "3": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 100,
+                  "isLocked": true,
+                  "allAttrNum": 100000
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 20,
+                  "attrNum": 2,
+                  "isLocked": false,
+                  "allAttrNum": 2000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 84,
+                  "isLocked": true,
+                  "allAttrNum": 84000
+                },
+                "4": {
+                  "colorId": 3,
+                  "attrId": 13,
+                  "attrNum": 13,
+                  "isLocked": false,
+                  "allAttrNum": 13000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1580,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 7820,
+              "quenchHpExt": 0
+            },
+            "4": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 90,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 11,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 27,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 540
+            }
+          },
+          "appendSkill": [
+            1033008
+          ],
+          "bindingMode": "equipment-ledger-v1",
+          "containerId": "eqc_1788921276999_121_1zb4uu"
+        },
+        "113": {
+          "heroId": 113,
+          "level": 6000,
+          "artifactId": 11155,
+          "pearlId": 5,
+          "useSkin": 11302,
+          "trump": {
+            "activeId": 360,
+            "inactiveId": 361,
+            "transTrumpId": 0
+          },
+          "equipment": {
+            "1": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 19,
+              "enchantUId2": 20,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 15,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 83,
+                  "isLocked": true,
+                  "allAttrNum": 83000
+                },
+                "3": {
+                  "colorId": 2,
+                  "attrId": 6,
+                  "attrNum": 8,
+                  "isLocked": false,
+                  "allAttrNum": 8000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 20,
+                  "attrNum": 4,
+                  "isLocked": false,
+                  "allAttrNum": 4000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1049,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 4851,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 0
+            },
+            "2": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 15,
+              "enchantUId2": 16,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 89,
+                  "isLocked": false,
+                  "allAttrNum": 89000
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 14,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 10,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 829,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 16419
+            },
+            "3": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 88,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 2,
+                  "attrNum": 4,
+                  "isLocked": false,
+                  "allAttrNum": 4000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 17,
+                  "attrNum": 92,
+                  "isLocked": true,
+                  "allAttrNum": 92000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 6,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1824,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 9210,
+              "quenchHpExt": 0
+            },
+            "4": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 17,
+              "enchantUId2": 18,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 4,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 17,
+                  "attrNum": 89,
+                  "isLocked": false,
+                  "allAttrNum": 89000
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 11,
+                  "attrNum": 4,
+                  "isLocked": false,
+                  "allAttrNum": 4000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 668,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 12672
+            }
+          },
+          "appendSkill": [],
+          "bindingMode": "equipment-ledger-v1",
+          "containerId": "eqc_1788921276975_106_nbran8"
+        },
+        "119": {
+          "heroId": 119,
+          "level": 6000,
+          "artifactId": 11065,
+          "pearlId": 6,
+          "useSkin": -1,
+          "trump": {
+            "activeId": 360,
+            "inactiveId": 1,
+            "transTrumpId": 600
+          },
+          "equipment": {
+            "1": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 4,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 88,
+                  "isLocked": false,
+                  "allAttrNum": 88000
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 19,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 10,
+                  "attrNum": 2,
+                  "isLocked": false,
+                  "allAttrNum": 2000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1025,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 4725,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 0
+            },
+            "2": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 87,
+                  "isLocked": false,
+                  "allAttrNum": 87000
+                },
+                "2": {
+                  "colorId": 4,
+                  "attrId": 8,
+                  "attrNum": 33,
+                  "isLocked": false,
+                  "allAttrNum": 33000
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 6,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 987,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 18525
+            },
+            "3": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 17,
+                  "attrNum": 4,
+                  "isLocked": false,
+                  "allAttrNum": 4000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 14,
+                  "attrNum": 84,
+                  "isLocked": true,
+                  "allAttrNum": 84000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 85,
+                  "isLocked": true,
+                  "allAttrNum": 85000
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 15,
+                  "attrNum": 57,
+                  "isLocked": true,
+                  "allAttrNum": 57000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 2209,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 10830,
+              "quenchHpExt": 0
+            },
+            "4": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 10,
+                  "attrNum": 2,
+                  "isLocked": false,
+                  "allAttrNum": 2000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 89,
+                  "isLocked": false,
+                  "allAttrNum": 89000
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 19,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 17,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1704,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 30348
+            }
+          },
+          "appendSkill": [
+            1033016
+          ],
+          "bindingMode": "equipment-ledger-v1",
+          "containerId": "eqc_1788921276971_104_pn5m5b"
+        },
+        "120": {
+          "heroId": 120,
+          "level": 6000,
+          "artifactId": 11105,
+          "pearlId": 1,
+          "useSkin": 12006,
+          "trump": {
+            "activeId": 60,
+            "inactiveId": 170,
+            "transTrumpId": 0
+          },
+          "equipment": {
+            "1": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 3,
+              "enchantUId2": 4,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 14,
+                  "attrNum": 87,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 86,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 5,
+                  "attrId": 5,
+                  "attrNum": 56,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 6,
+                  "attrNum": 53,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "5": {
+                  "colorId": 6,
+                  "attrId": 10,
+                  "attrNum": 83,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 11,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 12,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                },
+                "3": {
+                  "colorId": 2,
+                  "attrId": 7,
+                  "attrNum": 9,
+                  "isLocked": false,
+                  "allAttrNum": 9000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 19,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "5": {
+                  "colorId": 2,
+                  "attrId": 6,
+                  "attrNum": 10,
+                  "isLocked": false,
+                  "allAttrNum": 10000
+                }
+              },
+              "quenchTimes": 10350,
+              "quenchTimes2": 10356,
+              "quenchAttackExt": 45492,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 0
+            },
+            "2": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 7,
+              "enchantUId2": 8,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 96,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 16,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 82,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 6,
+                  "attrId": 11,
+                  "attrNum": 86,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 2450,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 49218
+            },
+            "3": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 2,
+                  "attrId": 21,
+                  "attrNum": 8,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 14,
+                  "attrNum": 86,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 84,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 6,
+                  "attrNum": 62,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1004,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 5340,
+              "quenchHpExt": 0
+            },
+            "4": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 13,
+              "enchantUId2": 14,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 83,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 82,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 14,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 11,
+                  "attrNum": 69,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1209,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 23004
+            }
+          },
+          "appendSkill": [
+            1033012
+          ],
+          "bindingMode": "equipment-ledger-v1",
+          "containerId": "eqc_1788921276985_110_ngdnuq"
+        }
+      },
+      "enchantMap": {
+        "2": 1,
+        "6": 7,
+        "12": 13
+      },
+      "legionResearch": {
+        "101": 0,
+        "102": 0,
+        "103": 0,
+        "104": 0,
+        "105": 0,
+        "106": 0,
+        "107": 0,
+        "108": 0,
+        "109": 0,
+        "110": 0,
+        "111": 0,
+        "112": 0,
+        "113": 0,
+        "114": 0,
+        "201": 60,
+        "202": 50,
+        "203": 40,
+        "204": 30,
+        "205": 20,
+        "206": 20,
+        "207": 20,
+        "208": 20,
+        "209": 20,
+        "210": 25,
+        "211": 20,
+        "212": 23,
+        "213": 20,
+        "214": 0,
+        "301": 0,
+        "302": 0,
+        "303": 0,
+        "304": 0,
+        "305": 0,
+        "306": 0,
+        "307": 0,
+        "308": 0,
+        "309": 0,
+        "310": 0,
+        "311": 0,
+        "312": 0,
+        "313": 0,
+        "314": 0,
+        "401": 60,
+        "402": 50,
+        "403": 40,
+        "404": 30,
+        "405": 20,
+        "406": 20,
+        "407": 20,
+        "408": 20,
+        "409": 20,
+        "410": 25,
+        "411": 20,
+        "412": 20,
+        "413": 20,
+        "414": 0,
+        "501": 60,
+        "502": 50,
+        "503": 40,
+        "504": 30,
+        "505": 20,
+        "506": 20,
+        "507": 20,
+        "508": 20,
+        "509": 20,
+        "510": 25,
+        "511": 20,
+        "512": 25,
+        "513": 20,
+        "514": 0,
+        "601": 60,
+        "602": 50,
+        "603": 40,
+        "604": 30,
+        "605": 20,
+        "606": 20,
+        "607": 20,
+        "608": 20,
+        "609": 20,
+        "610": 25,
+        "611": 20,
+        "612": 25,
+        "613": 20,
+        "614": 0
+      }
+    },
+    "createDate": "2026-09-09T02:36:17.436Z"
+  },
+  {
+    "id": 1789373362826,
+    "name": "五吴",
+    "formation": {
+      "schemaVersion": 2,
+      "bindingMode": "equipment-ledger-v1",
+      "roleId": 664385006,
+      "presetTeamId": 1,
+      "power": 10962638297,
+      "lordWeaponId": 9,
+      "battleTeam": {
+        "0": 119,
+        "1": 121,
+        "2": 105,
+        "3": 111,
+        "4": 106
+      },
+      "heroes": {
+        "105": {
+          "heroId": 105,
+          "level": 6000,
+          "artifactId": 11135,
+          "pearlId": 3,
+          "useSkin": 10501,
+          "trump": {
+            "activeId": 60,
+            "inactiveId": 170,
+            "transTrumpId": 0
+          },
+          "equipment": {
+            "1": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 3,
+              "enchantUId2": 4,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 14,
+                  "attrNum": 87,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 86,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 5,
+                  "attrId": 5,
+                  "attrNum": 56,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 6,
+                  "attrNum": 53,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "5": {
+                  "colorId": 6,
+                  "attrId": 10,
+                  "attrNum": 83,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {
+                "1": {
+                  "colorId": 2,
+                  "attrId": 20,
+                  "attrNum": 9,
+                  "isLocked": false,
+                  "allAttrNum": 9000
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 21,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "3": {
+                  "colorId": 2,
+                  "attrId": 17,
+                  "attrNum": 6,
+                  "isLocked": false,
+                  "allAttrNum": 6000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 14,
+                  "attrNum": 2,
+                  "isLocked": false,
+                  "allAttrNum": 2000
+                },
+                "5": {
+                  "colorId": 1,
+                  "attrId": 12,
+                  "attrNum": 4,
+                  "isLocked": false,
+                  "allAttrNum": 4000
+                }
+              },
+              "quenchTimes": 10350,
+              "quenchTimes2": 10376,
+              "quenchAttackExt": 45492,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 0
+            },
+            "2": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 7,
+              "enchantUId2": 8,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 96,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 2,
+                  "attrId": 4,
+                  "attrNum": 7,
+                  "isLocked": false,
+                  "allAttrNum": 7000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 82,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 6,
+                  "attrId": 11,
+                  "attrNum": 86,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 2459,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 49374
+            },
+            "3": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 2,
+                  "attrId": 21,
+                  "attrNum": 8,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 14,
+                  "attrNum": 86,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 84,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 6,
+                  "attrNum": 62,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1004,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 5340,
+              "quenchHpExt": 0
+            },
+            "4": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 13,
+              "enchantUId2": 14,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 83,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 82,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 14,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 11,
+                  "attrNum": 69,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1209,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 23004
+            }
+          },
+          "appendSkill": [
+            1033008
+          ],
+          "bindingMode": "equipment-ledger-v1",
+          "containerId": "eqc_1789373362766_105_1b72i2"
+        },
+        "106": {
+          "heroId": 106,
+          "level": 6000,
+          "artifactId": 11155,
+          "pearlId": 5,
+          "useSkin": 10603,
+          "trump": {
+            "activeId": 360,
+            "inactiveId": 361,
+            "transTrumpId": 0
+          },
+          "equipment": {
+            "1": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 15,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 13,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 86,
+                  "isLocked": false,
+                  "allAttrNum": 86000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 881,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 4266,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 0
+            },
+            "2": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 9,
+              "enchantUId2": 10,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 89,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 5,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 64,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 1326
+            },
+            "3": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 100,
+                  "isLocked": true,
+                  "allAttrNum": 100000
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 20,
+                  "attrNum": 2,
+                  "isLocked": false,
+                  "allAttrNum": 2000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 84,
+                  "isLocked": true,
+                  "allAttrNum": 84000
+                },
+                "4": {
+                  "colorId": 3,
+                  "attrId": 13,
+                  "attrNum": 13,
+                  "isLocked": false,
+                  "allAttrNum": 13000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1580,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 7820,
+              "quenchHpExt": 0
+            },
+            "4": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 90,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 11,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 27,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 540
+            }
+          },
+          "appendSkill": [
+            1033014
+          ],
+          "bindingMode": "equipment-ledger-v1",
+          "containerId": "eqc_1788921276999_121_1zb4uu"
+        },
+        "111": {
+          "heroId": 111,
+          "level": 6000,
+          "artifactId": 11065,
+          "pearlId": 6,
+          "useSkin": 11101,
+          "trump": {
+            "activeId": 480,
+            "inactiveId": 60,
+            "transTrumpId": 0
+          },
+          "equipment": {
+            "1": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 1,
+              "enchantUId2": 2,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 97,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 83,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 4,
+                  "attrNum": 89,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 6,
+                  "attrId": 15,
+                  "attrNum": 85,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "5": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 96,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {
+                "1": {
+                  "colorId": 2,
+                  "attrId": 17,
+                  "attrNum": 10,
+                  "isLocked": false,
+                  "allAttrNum": 10000
+                },
+                "2": {
+                  "colorId": 2,
+                  "attrId": 2,
+                  "attrNum": 10,
+                  "isLocked": false,
+                  "allAttrNum": 10000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 8,
+                  "attrNum": 95,
+                  "isLocked": false,
+                  "allAttrNum": 95000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 12,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                },
+                "5": {
+                  "colorId": 1,
+                  "attrId": 5,
+                  "attrNum": 4,
+                  "isLocked": false,
+                  "allAttrNum": 4000
+                }
+              },
+              "quenchTimes": 12163,
+              "quenchTimes2": 10113,
+              "quenchAttackExt": 45492,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 0
+            },
+            "2": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 5,
+              "enchantUId2": 6,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 84,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 15,
+                  "attrNum": 92,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 5,
+                  "attrNum": 89,
+                  "isLocked": true,
+                  "allAttrNum": 89000
+                },
+                "4": {
+                  "colorId": 6,
+                  "attrId": 8,
+                  "attrNum": 87,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "5": {
+                  "colorId": 5,
+                  "attrId": 6,
+                  "attrNum": 64,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {
+                "1": {
+                  "colorId": 3,
+                  "attrId": 19,
+                  "attrNum": 15,
+                  "isLocked": false,
+                  "allAttrNum": 15000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 97,
+                  "isLocked": true,
+                  "allAttrNum": 97000
+                },
+                "3": {
+                  "colorId": 2,
+                  "attrId": 20,
+                  "attrNum": 6,
+                  "isLocked": false,
+                  "allAttrNum": 6000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 15,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "5": {
+                  "colorId": 1,
+                  "attrId": 1,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                }
+              },
+              "quenchTimes": 10849,
+              "quenchTimes2": 10009,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 198972
+            },
+            "3": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 5,
+                  "attrId": 9,
+                  "attrNum": 74,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 10,
+                  "attrNum": 84,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 5,
+                  "attrNum": 81,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 1,
+                  "attrNum": 51,
+                  "isLocked": false,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 2660,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 13220,
+              "quenchHpExt": 0
+            },
+            "4": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 11,
+              "enchantUId2": 12,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 81,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 82,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 8,
+                  "attrNum": 88,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 15,
+                  "attrNum": 79,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "5": {
+                  "colorId": 6,
+                  "attrId": 10,
+                  "attrNum": 88,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                }
+              },
+              "quenches2": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 4,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 13,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                },
+                "3": {
+                  "colorId": 3,
+                  "attrId": 19,
+                  "attrNum": 12,
+                  "isLocked": false,
+                  "allAttrNum": 12000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 5,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "5": {
+                  "colorId": 6,
+                  "attrId": 1,
+                  "attrNum": 82,
+                  "isLocked": false,
+                  "allAttrNum": 82000
+                }
+              },
+              "quenchTimes": 10987,
+              "quenchTimes2": 10037,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 183666
+            }
+          },
+          "appendSkill": [
+            1033016
+          ],
+          "bindingMode": "equipment-ledger-v1",
+          "containerId": "eqc_1789373362783_111_8ofzvg"
+        },
+        "119": {
+          "heroId": 119,
+          "level": 6000,
+          "artifactId": 11145,
+          "pearlId": 2,
+          "useSkin": -1,
+          "trump": {
+            "activeId": 360,
+            "inactiveId": 1,
+            "transTrumpId": 600
+          },
+          "equipment": {
+            "1": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 4,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 88,
+                  "isLocked": false,
+                  "allAttrNum": 88000
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 19,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 10,
+                  "attrNum": 2,
+                  "isLocked": false,
+                  "allAttrNum": 2000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1025,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 4725,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 0
+            },
+            "2": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 87,
+                  "isLocked": false,
+                  "allAttrNum": 87000
+                },
+                "2": {
+                  "colorId": 4,
+                  "attrId": 8,
+                  "attrNum": 33,
+                  "isLocked": false,
+                  "allAttrNum": 33000
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 6,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 987,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 18525
+            },
+            "3": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 17,
+                  "attrNum": 4,
+                  "isLocked": false,
+                  "allAttrNum": 4000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 14,
+                  "attrNum": 84,
+                  "isLocked": true,
+                  "allAttrNum": 84000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 6,
+                  "attrNum": 85,
+                  "isLocked": true,
+                  "allAttrNum": 85000
+                },
+                "4": {
+                  "colorId": 5,
+                  "attrId": 15,
+                  "attrNum": 57,
+                  "isLocked": true,
+                  "allAttrNum": 57000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 2209,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 10830,
+              "quenchHpExt": 0
+            },
+            "4": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 10,
+                  "attrNum": 2,
+                  "isLocked": false,
+                  "allAttrNum": 2000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 89,
+                  "isLocked": false,
+                  "allAttrNum": 89000
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 19,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 17,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1704,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 30348
+            }
+          },
+          "appendSkill": [
+            1033012
+          ],
+          "bindingMode": "equipment-ledger-v1",
+          "containerId": "eqc_1788921276971_104_pn5m5b"
+        },
+        "121": {
+          "heroId": 121,
+          "level": 6000,
+          "artifactId": 11225,
+          "pearlId": 7,
+          "useSkin": 12103,
+          "trump": {
+            "activeId": 360,
+            "inactiveId": 361,
+            "transTrumpId": 0
+          },
+          "equipment": {
+            "1": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 19,
+              "enchantUId2": 20,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 15,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 83,
+                  "isLocked": true,
+                  "allAttrNum": 83000
+                },
+                "3": {
+                  "colorId": 2,
+                  "attrId": 6,
+                  "attrNum": 8,
+                  "isLocked": false,
+                  "allAttrNum": 8000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 20,
+                  "attrNum": 4,
+                  "isLocked": false,
+                  "allAttrNum": 4000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1049,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 4851,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 0
+            },
+            "2": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 15,
+              "enchantUId2": 16,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 89,
+                  "isLocked": false,
+                  "allAttrNum": 89000
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 14,
+                  "attrNum": 5,
+                  "isLocked": false,
+                  "allAttrNum": 5000
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 10,
+                  "attrNum": 3,
+                  "isLocked": false,
+                  "allAttrNum": 3000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 829,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 16419
+            },
+            "3": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 0,
+              "enchantUId2": 0,
+              "quenches": {
+                "1": {
+                  "colorId": 6,
+                  "attrId": 9,
+                  "attrNum": 88,
+                  "isLocked": true,
+                  "allAttrNum": 0
+                },
+                "2": {
+                  "colorId": 1,
+                  "attrId": 2,
+                  "attrNum": 4,
+                  "isLocked": false,
+                  "allAttrNum": 4000
+                },
+                "3": {
+                  "colorId": 6,
+                  "attrId": 17,
+                  "attrNum": 92,
+                  "isLocked": true,
+                  "allAttrNum": 92000
+                },
+                "4": {
+                  "colorId": 1,
+                  "attrId": 6,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 1824,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 9210,
+              "quenchHpExt": 0
+            },
+            "4": {
+              "curQuenchId": 0,
+              "level": 4000,
+              "enchantUId": 17,
+              "enchantUId2": 18,
+              "quenches": {
+                "1": {
+                  "colorId": 1,
+                  "attrId": 4,
+                  "attrNum": 1,
+                  "isLocked": false,
+                  "allAttrNum": 1000
+                },
+                "2": {
+                  "colorId": 6,
+                  "attrId": 17,
+                  "attrNum": 89,
+                  "isLocked": false,
+                  "allAttrNum": 89000
+                },
+                "3": {
+                  "colorId": 1,
+                  "attrId": 11,
+                  "attrNum": 4,
+                  "isLocked": false,
+                  "allAttrNum": 4000
+                }
+              },
+              "quenches2": {},
+              "quenchTimes": 668,
+              "quenchTimes2": 0,
+              "quenchAttackExt": 0,
+              "quenchDefenseExt": 0,
+              "quenchHpExt": 12672
+            }
+          },
+          "appendSkill": [
+            1033015
+          ],
+          "bindingMode": "equipment-ledger-v1",
+          "containerId": "eqc_1788921276975_106_nbran8"
+        }
+      },
+      "enchantMap": {
+        "2": 1,
+        "6": 7,
+        "12": 13
+      },
+      "legionResearch": {
+        "101": 0,
+        "102": 0,
+        "103": 0,
+        "104": 0,
+        "105": 0,
+        "106": 0,
+        "107": 0,
+        "108": 0,
+        "109": 0,
+        "110": 0,
+        "111": 0,
+        "112": 0,
+        "113": 0,
+        "114": 0,
+        "201": 60,
+        "202": 50,
+        "203": 40,
+        "204": 30,
+        "205": 20,
+        "206": 20,
+        "207": 20,
+        "208": 20,
+        "209": 20,
+        "210": 25,
+        "211": 20,
+        "212": 23,
+        "213": 20,
+        "214": 0,
+        "301": 60,
+        "302": 50,
+        "303": 40,
+        "304": 30,
+        "305": 20,
+        "306": 20,
+        "307": 20,
+        "308": 20,
+        "309": 20,
+        "310": 25,
+        "311": 20,
+        "312": 20,
+        "313": 20,
+        "314": 0,
+        "401": 0,
+        "402": 0,
+        "403": 0,
+        "404": 0,
+        "405": 0,
+        "406": 0,
+        "407": 0,
+        "408": 0,
+        "409": 0,
+        "410": 0,
+        "411": 0,
+        "412": 0,
+        "413": 0,
+        "414": 0,
+        "501": 60,
+        "502": 50,
+        "503": 40,
+        "504": 30,
+        "505": 20,
+        "506": 20,
+        "507": 20,
+        "508": 20,
+        "509": 20,
+        "510": 25,
+        "511": 20,
+        "512": 25,
+        "513": 20,
+        "514": 0,
+        "601": 60,
+        "602": 50,
+        "603": 40,
+        "604": 30,
+        "605": 20,
+        "606": 20,
+        "607": 20,
+        "608": 20,
+        "609": 20,
+        "610": 25,
+        "611": 20,
+        "612": 25,
+        "613": 20,
+        "614": 0
+      }
+    },
+    "createDate": "2026-09-14T08:09:22.826Z"
+  }
+]
