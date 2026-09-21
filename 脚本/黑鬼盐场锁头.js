@@ -1092,8 +1092,10 @@
       'autoDigControls': [],
       'countdownText': null,
       'countdownLastSecond': -1,
-      'sortMode': 'none',
-      'sortOrder': 'desc',
+      'sortMode': 'power',
+      'sortOrder': 'asc',
+      'isSorting': false,
+      'btnResourceURL': '',
       'sortBars': [],
       'marchTickTimer': 0,
       'destroyed': false
@@ -1216,200 +1218,158 @@
   }
 
   function sortTroopsList(page) {
-    var listData = page && page._listData;
-    if (!Array.isArray(listData) || listData.length <= 1) return;
-    if (!page.__rawListData) {
-      page.__rawListData = listData.slice();
-    }
-    if (state.sortMode === 'none') {
-      page._listData = page.__rawListData.slice();
-    } else {
-      var mode = state.sortMode;
-      var isAsc = state.sortOrder === 'asc';
-      listData.sort(function (a, b) {
-        var valA = getTroopSortValue(a, mode);
-        var valB = getTroopSortValue(b, mode);
-        var diff = isAsc ? (valA - valB) : (valB - valA);
-        if (diff !== 0) return diff;
-        var subMode = mode === 'energy' ? 'power' : 'energy';
-        var subA = getTroopSortValue(a, subMode);
-        var subB = getTroopSortValue(b, subMode);
-        var subDiff = isAsc ? (subA - subB) : (subB - subA);
-        if (subDiff !== 0) return subDiff;
-        var nameA = String((a && a.player && a.player.name) || (a && a.name) || '');
-        var nameB = String((b && b.player && b.player.name) || (b && b.name) || '');
-        return nameA.localeCompare(nameB);
-      });
-    }
-    var list = page.ui && page.ui.m_list;
-    if (list) {
-      if (typeof list.refreshVirtualList === 'function') list.refreshVirtualList();
-      else if (typeof list.numItems === 'number') list.numItems = page._listData.length;
+    if (!page || state.isSorting) return;
+    state.isSorting = true;
+    try {
+      var ui = page.ui || page.contentPane || page;
+      var list = ui && (ui.m_list || (ui.getChild && (ui.getChild('m_list') || ui.getChild('list'))));
+      var listData = page._listData || (ui && ui._listData) || page._dataList;
+      if (!Array.isArray(listData) || listData.length <= 1) return;
+      if (!page.__rawListData) {
+        page.__rawListData = listData.slice();
+      }
+      if (state.sortMode === 'none') {
+        var raw = page.__rawListData.slice();
+        listData.length = 0;
+        for (var r = 0; r < raw.length; r++) listData.push(raw[r]);
+      } else {
+        var mode = state.sortMode;
+        var isAsc = state.sortOrder === 'asc';
+        listData.sort(function (a, b) {
+          var valA = getTroopSortValue(a, mode);
+          var valB = getTroopSortValue(b, mode);
+          var diff = isAsc ? (valA - valB) : (valB - valA);
+          if (diff !== 0) return diff;
+          var subMode = mode === 'energy' ? 'power' : 'energy';
+          var subA = getTroopSortValue(a, subMode);
+          var subB = getTroopSortValue(b, subMode);
+          var subDiff = isAsc ? (subA - subB) : (subB - subA);
+          if (subDiff !== 0) return subDiff;
+          var nameA = String((a && a.player && a.player.name) || (a && a.name) || '');
+          var nameB = String((b && b.player && b.player.name) || (b && b.name) || '');
+          return nameA.localeCompare(nameB);
+        });
+      }
+      if (list) {
+        if (typeof list.refreshVirtualList === 'function') list.refreshVirtualList();
+        else if (typeof list.numItems === 'number') list.numItems = listData.length;
+      }
+    } catch (e) {
+    } finally {
+      state.isSorting = false;
     }
   }
 
-  function drawSortButtonBg(graph, active, isAsc) {
-    if (!graph) return;
+  function setNodeSize(node, w, h) {
+    if (!node) return;
+    if (typeof node.setSize === 'function') node.setSize(w, h);
+    else { node.width = w; node.height = h; }
+  }
+
+  function setNodePos(node, x, y) {
+    if (!node) return;
+    if (typeof node.setPosition === 'function') node.setPosition(x, y);
+    else if (typeof node.setXY === 'function') node.setXY(x, y);
+    else { node.x = x; node.y = y; }
+  }
+
+  function showSortTip(msg) {
+    var fg = getFgui();
+    var root = getCountdownRoot();
+    if (!fg || !root) return;
     try {
-      if (typeof graph.clearGraphics === 'function') graph.clearGraphics();
-      var fill = active ? (isAsc ? 0x2471a3 : 0x27ae60) : 0xd5bd66;
-      var line = active ? 0x1a5276 : 0x6b4a22;
-      if (typeof graph.drawRoundRect === 'function') {
-        graph.drawRoundRect(2, line, fill, 6);
-      } else if (typeof graph.drawRect === 'function') {
-        graph.drawRect(2, line, fill);
+      if (!state.__sortTipText) {
+        var tf = new fg.GTextField();
+        tf.fontSize = 18;
+        tf.bold = true;
+        tf.color = '#00e676';
+        tf.stroke = 2;
+        tf.strokeColor = '#1b3a1a';
+        tf.singleLine = true;
+        tf.align = 'center';
+        tf.verticalAlign = 'middle';
+        tf.touchable = false;
+        tf.sortingOrder = 99999;
+        root.addChild(tf);
+        state.__sortTipText = tf;
       }
+      var tip = state.__sortTipText;
+      tip.text = msg;
+      var rootW = Number(root.width) || 720;
+      var rootH = Number(root.height) || 1280;
+      var tipW = 340;
+      var tipH = 38;
+      setNodeSize(tip, tipW, tipH);
+      setNodePos(tip, Math.max(10, Math.floor((rootW - tipW) / 2)), Math.floor(rootH * 0.42));
+      tip.visible = true;
+      tip.alpha = 1;
+      if (state.__sortTipTimer) clearTimeout(state.__sortTipTimer);
+      state.__sortTipTimer = setTimeout(function () {
+        tip.visible = false;
+      }, 2200);
     } catch (e) { }
   }
 
-  function makeSortButton(text, onClick, width) {
-    var fg = getFgui();
-    var btnW = width || 76;
-    var btnH = 34;
-    var comp = new fg.GComponent();
-    comp.touchable = true;
-    _502487(comp, btnW, btnH);
-
-    var bg = new fg.GGraph();
-    _502487(bg, btnW, btnH);
-    comp.addChild(bg);
-    comp.__sfaBg = bg;
-
-    var tf = new fg.GTextField();
-    tf.text = text;
-    tf.fontSize = 16;
-    tf.bold = true;
-    tf.color = '#4b2a18';
-    tf.align = 'center';
-    tf.valign = 'middle';
-    tf.touchable = false;
-    _502487(tf, btnW, btnH);
-    comp.addChild(tf);
-    comp.__sfaLabel = tf;
-
-    drawSortButtonBg(bg, false, false);
-    if (typeof comp.onClick === 'function') comp.onClick(onClick);
-    return comp;
-  }
-
-  function setSortButtonActive(btn, active, isAsc, labelText) {
-    if (!btn) return;
-    var label = btn.__sfaLabel || btn;
-    if (labelText) label.text = labelText;
-    label.color = active ? '#ffffff' : '#4b2a18';
-    label.bold = true;
-    drawSortButtonBg(btn.__sfaBg, active, isAsc);
-  }
-
-  function updateSortButtonsUI(page) {
-    var bar = page && page.__saltSortBar;
-    if (!bar) return;
-    var mode = state.sortMode;
-    var isAsc = state.sortOrder === 'asc';
-
-    setSortButtonActive(bar.btnEnergy, mode === 'energy', isAsc, mode === 'energy' ? (isAsc ? '精力▲' : '精力▼') : '精力');
-    setSortButtonActive(bar.btnPower, mode === 'power', isAsc, mode === 'power' ? (isAsc ? '战力▲' : '战力▼') : '战力');
-    setSortButtonActive(bar.btnArrival, mode === 'marchTime', isAsc, mode === 'marchTime' ? '到达▲' : '到达');
-    setSortButtonActive(bar.btnReset, mode === 'none', false, '默认');
-  }
-
-  function ensureTroopsSortButtons(page) {
-    var ui = page && page.ui;
-    var fg = getFgui();
-    if (!ui || !fg || state.destroyed) return;
-    var list = ui.m_list;
-    if (!page.__saltSortBar) {
-      var barComp = new fg.GComponent();
-      barComp.name = 'saltSortBar';
-      barComp.touchable = true;
-
-      var titleText = new fg.GTextField();
-      titleText.text = '排序:';
-      titleText.fontSize = 18;
-      titleText.color = '#9a4b31';
-      titleText.bold = true;
-      titleText.align = 'right';
-      titleText.valign = 'middle';
-      titleText.touchable = false;
-      _502487(titleText, 48, 34);
-      barComp.addChild(titleText);
-
-      var btnEnergy = makeSortButton('精力', function () {
-        if (state.sortMode !== 'energy') {
-          state.sortMode = 'energy';
-          state.sortOrder = 'desc';
-        } else if (state.sortOrder === 'desc') {
-          state.sortOrder = 'asc';
-        } else {
-          state.sortMode = 'none';
-        }
-        updateSortButtonsUI(page);
-        sortTroopsList(page);
-      }, 72);
-      barComp.addChild(btnEnergy);
-
-      var btnPower = makeSortButton('战力', function () {
-        if (state.sortMode !== 'power') {
-          state.sortMode = 'power';
-          state.sortOrder = 'desc';
-        } else if (state.sortOrder === 'desc') {
-          state.sortOrder = 'asc';
-        } else {
-          state.sortMode = 'none';
-        }
-        updateSortButtonsUI(page);
-        sortTroopsList(page);
-      }, 72);
-      barComp.addChild(btnPower);
-
-      var btnArrival = makeSortButton('到达', function () {
-        if (state.sortMode !== 'marchTime') {
-          state.sortMode = 'marchTime';
-          state.sortOrder = 'asc';
-        } else {
-          state.sortMode = 'none';
-        }
-        updateSortButtonsUI(page);
-        sortTroopsList(page);
-      }, 72);
-      barComp.addChild(btnArrival);
-
-      var btnReset = makeSortButton('默认', function () {
-        state.sortMode = 'none';
-        state.sortOrder = 'desc';
-        updateSortButtonsUI(page);
-        sortTroopsList(page);
-      }, 60);
-      barComp.addChild(btnReset);
-
-      ui.addChild(barComp);
-      page.__saltSortBar = {
-        root: barComp,
-        title: titleText,
-        btnEnergy: btnEnergy,
-        btnPower: btnPower,
-        btnArrival: btnArrival,
-        btnReset: btnReset
-      };
-      state.sortBars.push(page.__saltSortBar);
+  function findTitleNode(ui) {
+    if (!ui) return null;
+    if (ui.m_title) return ui.m_title;
+    if (typeof ui.getChild === 'function') {
+      var byName = ui.getChild('title') || ui.getChild('m_title') || ui.getChild('txtTitle');
+      if (byName) return byName;
     }
+    if (ui.numChildren > 0 && typeof ui.getChildAt === 'function') {
+      for (var i = 0; i < ui.numChildren; i++) {
+        var child = ui.getChildAt(i);
+        if (child && String(child.text || '').indexOf('队列详情') >= 0) {
+          return child;
+        }
+      }
+    }
+    return null;
+  }
 
-    var sortBar = page.__saltSortBar;
-    var listY = Number(list && list.y) || 270;
-    var barY = Math.max(0, listY - 48);
-    var uiWidth = Number(ui.width) || 720;
-    var startX = Math.max(10, uiWidth - 360);
+  function updateTitleText(page) {
+    var ui = page && (page.ui || page.contentPane || page);
+    var titleNode = findTitleNode(ui);
+    if (!titleNode) return;
+    var modeName = state.sortMode === 'energy' ? '精力▲' : '战力▲';
+    titleNode.text = '队列详情 (' + modeName + ')';
+  }
 
-    _15c23b(sortBar.root, startX, barY);
-    _502487(sortBar.root, 350, 36);
+  function hookTitleToggle(page) {
+    var ui = page && (page.ui || page.contentPane || page);
+    if (!ui || page.__titleHooked) return;
+    var titleNode = findTitleNode(ui);
+    if (!titleNode) return;
+    page.__titleHooked = true;
+    titleNode.touchable = true;
+    updateTitleText(page);
 
-    _15c23b(sortBar.title, 0, 0);
-    _15c23b(sortBar.btnEnergy, 52, 0);
-    _15c23b(sortBar.btnPower, 128, 0);
-    _15c23b(sortBar.btnArrival, 204, 0);
-    _15c23b(sortBar.btnReset, 280, 0);
+    if (typeof titleNode.onClick === 'function') {
+      titleNode.onClick(function () {
+        if (state.sortMode === 'power') {
+          state.sortMode = 'energy';
+          showSortTip('已切换为：精力升序 (低精力优先)');
+        } else {
+          state.sortMode = 'power';
+          showSortTip('已切换为：战力升序 (低战力优先)');
+        }
+        state.sortOrder = 'asc';
+        updateTitleText(page);
+        sortTroopsList(page);
+      });
+    }
+  }
 
-    updateSortButtonsUI(page);
+  function ensureTroopsAutoSort(page) {
+    if (!page || state.destroyed) return;
+    hookTitleToggle(page);
+    if (!page.__saltInitialSorted && state.sortMode !== 'none') {
+      page.__saltInitialSorted = true;
+      window.setTimeout(function () {
+        sortTroopsList(page);
+      }, 150);
+    }
   }
 
   /* =========================================================
@@ -1434,15 +1394,18 @@
     countdownNode.singleLine = true;
     countdownNode.touchable = false;
     countdownNode.visible = true;
+    countdownNode.sortingOrder = 9999;
 
+    // 将到达时间显示在列表项最右边（右对齐）
+    var itemW = Number(item.width) || (item.parent && Number(item.parent.width)) || 520;
+    var countdownW = 84;
+    var rightMargin = 16;
+    var targetX = Math.max(380, itemW - countdownW - rightMargin);
     var statusNode = findStatusTextNode(item);
-    if (statusNode) {
-      var statusX = Number(statusNode.x) || 120;
-      var statusY = Number(statusNode.y) || 28;
-      var statusW = _0x26058d(statusNode) || 36;
-      _502487(countdownNode, 68, 20);
-      _15c23b(countdownNode, statusX + statusW + 4, statusY);
-    }
+    var yPos = statusNode ? (Number(statusNode.y) || 28) : 28;
+    countdownNode.align = 'right';
+    setNodeSize(countdownNode, countdownW, 20);
+    setNodePos(countdownNode, targetX, yPos);
   }
 
   function updateAllVisibleMarchCountdowns() {
@@ -3739,25 +3702,46 @@
           _0x54bf7f['text'] = '自动刨地',
           _0x54bf7f['touchable'] = false,
           _0x54bf7f['singleLine'] = true,
-          _0x54bf7f['autoSize'] = _0x5cabda['AutoSizeType'] ? _0x5cabda['AutoSizeType']['None'] : 0,
-          ['font', 'fontSize', 'color', 'bold', 'stroke', 'strokeColor', 'align', 'verticalAlign']['forEach'](function (_0x30aef7) {
-            if (_0x54e836 && _0x54e836[_0x30aef7] !== undefined) _0x54bf7f[_0x30aef7] = _0x54e836[_0x30aef7];
-          }),
-          _0x27fb0d['addChild'](_0x54bf7f),
-          _0x27fb0d['__saltAutoDigLabel'] = _0x54bf7f;
+          _0x54bf7f['autoSize'] = _0x5cabda['AutoSizeType'] ? _0x5cabda['AutoSizeType']['None'] : 0;
+        var sourceTf = _0x54e836;
+        if (sourceTf && !sourceTf['fontSize']) {
+          sourceTf = (sourceTf['title'] && sourceTf['title']['fontSize'] ? sourceTf['title'] : null)
+            || (sourceTf['getChild'] && (sourceTf['getChild']('title') || sourceTf['getChild']('text') || sourceTf['getChild']('label') || sourceTf['getChild']('m_title')))
+            || (sourceTf['_titleObject'])
+            || (sourceTf['m_title'])
+            || _0x54e836;
+        }
+        ['font', 'fontSize', 'color', 'bold', 'stroke', 'strokeColor', 'align', 'verticalAlign']['forEach'](function (_0x30aef7) {
+          if (sourceTf && sourceTf[_0x30aef7] !== undefined) _0x54bf7f[_0x30aef7] = sourceTf[_0x30aef7];
+        });
+        if (!_0x54bf7f['fontSize'] || _0x54bf7f['fontSize'] < 18) {
+          _0x54bf7f['fontSize'] = Math.max(20, Number(sourceTf && sourceTf['fontSize']) || 22);
+        }
+        if (!_0x54bf7f['color'] || _0x54bf7f['color'] === '#ffffff' || _0x54bf7f['color'] === 0xffffff) {
+          _0x54bf7f['color'] = (sourceTf && sourceTf['color'] && sourceTf['color'] !== '#ffffff' && sourceTf['color'] !== 0xffffff) ? sourceTf['color'] : '#682a10';
+        }
+        _0x54bf7f['bold'] = true;
+        _0x54bf7f['align'] = 'left';
+        _0x54bf7f['verticalAlign'] = 'middle';
+        _0x27fb0d['addChild'](_0x54bf7f),
+        _0x27fb0d['__saltAutoDigLabel'] = _0x54bf7f;
       }
     }
     _0x289ca6 = Math['max']((Number(_0x2c0141['x']) || 0) + (Number(_0x2c0141['width']) || 60), (Number(_0x54e836 && _0x54e836['x']) || 0) + (Number(_0x54e836 && _0x54e836['width']) || 120)) + 18,
       _0x146ae0 = Number(_0x2c0141['y']) || 0,
-      _0x502487(_0x1f3826, Number(_0x2c0141['width']) || 60, Number(_0x2c0141['height']) || 32),
-      _0x15c23b(_0x1f3826, _0x289ca6, _0x146ae0),
+      setNodeSize(_0x1f3826, Number(_0x2c0141['width']) || 60, Number(_0x2c0141['height']) || 32),
+      setNodePos(_0x1f3826, _0x289ca6, _0x146ae0),
       _0x1f3826['sortingOrder'] = 9997;
     if (_0x54bf7f) {
+      if (!_0x54bf7f['fontSize'] || _0x54bf7f['fontSize'] < 18) _0x54bf7f['fontSize'] = 22;
+      if (!_0x54bf7f['color'] || _0x54bf7f['color'] === '#ffffff' || _0x54bf7f['color'] === 0xffffff) _0x54bf7f['color'] = '#682a10';
+      _0x54bf7f['bold'] = true;
+      _0x54bf7f['verticalAlign'] = 'middle';
       _0x446dc7 = _0x289ca6 + (Number(_0x1f3826['width']) || 60) + 8,
         _0x2dc6bb = Number(_0x54e836 && _0x54e836['y']);
       if (!isFinite(_0x2dc6bb)) _0x2dc6bb = _0x146ae0;
-      _0x502487(_0x54bf7f, Number(_0x54e836 && _0x54e836['width']) || 120, Number(_0x54e836 && _0x54e836['height']) || 32),
-        _0x15c23b(_0x54bf7f, _0x446dc7, _0x2dc6bb),
+      setNodeSize(_0x54bf7f, Math.max(130, Number(_0x54e836 && _0x54e836['width']) || 130), Math.max(32, Number(_0x54e836 && _0x54e836['height']) || 32)),
+        setNodePos(_0x54bf7f, _0x446dc7, _0x2dc6bb),
         _0x54bf7f['sortingOrder'] = 9997;
     }
     _0x168b47 = state['autoDigControls']['filter'](function (_0x26785e) {
@@ -3873,6 +3857,10 @@
               _0x1dda11) {
               var _0x441099 = _0x341141["apply"](this,
                 arguments);
+              var _page = this;
+              try {
+                ensureTroopsAutoSort(_page);
+              } catch (e) { }
               return window["setTimeout"](function () {
                 refreshItem(_0x371e47,
                   _0x1dda11);
@@ -3889,10 +3877,7 @@
           var self = this;
           var ret = origRefresh.apply(self, arguments);
           try {
-            ensureTroopsSortButtons(self);
-            if (state.sortMode !== 'none') {
-              sortTroopsList(self);
-            }
+            ensureTroopsAutoSort(self);
           } catch (e) { }
           return ret;
         };
@@ -3905,10 +3890,7 @@
           var self = this;
           var ret = origShow.apply(self, arguments);
           try {
-            ensureTroopsSortButtons(self);
-            if (state.sortMode !== 'none') {
-              sortTroopsList(self);
-            }
+            ensureTroopsAutoSort(self);
           } catch (e) { }
           return ret;
         };
