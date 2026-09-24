@@ -1,24 +1,49 @@
 /*
- * 黑鬼盐场锁头.js (HeiGuiSaltLocker)
- * 基于新锁头盐场阵容，深度融合战力/精力排序与敌人到达目的地剩余时间显示。
- * 特性：
- * 1. 离线头像阵容精准识别与标签注入
- * 2. 精准锁头排队、自动行军攻击与自动刨地
- * 3. 进攻/防守列表原生 FairyGUI 排序控制栏（支持精力升降序、战力升降序、到达时间升序与还原默认）
- * 4. 敌人行军到达目的地倒计时实时每秒刷新显示（列表项直显 + HUD 目标倒计时）
+ * 黑鬼盐场锁头_v2.0.0_清晰源码.js (HeiGuiSaltLocker)
+ * 
+ * 基于新锁头盐场阵容，采用现代化分层架构彻底重构反混淆。
+ * 代码结构清晰、职责边界分明、易读性高，兼具工业级健壮性。
+ * 
+ * 模块架构索引：
+ * ============================================================================
+ * 1. CONFIG & DICTS          基础配置、武将字典、阵型正则与离线特征库
+ * 2. STATE                   统一运行时状态管理树
+ * 3. GAME ADAPTER & UTILS    底层游戏反射、通用工具与日志
+ * 4. PLAYER & BATTLEFIELD    玩家属性深度解析、行军/战场数据模型与状态判定
+ * 5. AVATAR & FORMATION      离线图像特征识别算法、队伍解析与阵型判定
+ * 6. UI & FAIRYGUI TOOLS     FairyGUI 节点创建、自绘矢量按钮、样式排版与倒计时 HUD
+ * 7. TROOP SORTING           部队列表排序核心（战力/精力/到达时间/无损还原）
+ * 8. AUTO DIG                自动刨地模块（自适应空间排版，彻底杜绝窄屏右侧裁剪）
+ * 9. LOCK & COMBAT ENGINE    锁头核心攻击调度机（队列管理、折返跑防护、失败重试）
+ * 10. PROTOTYPE HOOKS        游戏原型链注入（部队列表页与建筑面板拦截）
+ * 11. LIFECYCLE & EXPORT     生命周期监控、原生自动攻击保护与全局对外 API 导出
+ * ============================================================================
  */
 (function () {
   'use strict';
-  var GLOBAL_KEY = 'HeiGuiSaltLocker',
-    VERSION = "20260924-v2.0.0",
-    AVATAR_SIGNATURE_WIDTH = 8,
-    AVATAR_SIGNATURE_HEIGHT = 5,
-    AVATAR_DISTANCE_THRESHOLD = 1.5,
-    AVATAR_MARGIN_THRESHOLD = 0.5,
-    TEAM_CACHE_TTL_MS = 0,
-    CACHE_LIMIT = 1200;
-  window['SaltQueueFormationLocker'] && typeof window['SaltQueueFormationLocker']["destroy"] === 'function' && window['SaltQueueFormationLocker']["destroy"]();
-  window[GLOBAL_KEY] && typeof window[GLOBAL_KEY]["destroy"] === 'function' && window[GLOBAL_KEY]["destroy"]();
+
+  /* ============================================================================
+   * 1. CONFIG & DICTS (基础配置、武将字典、阵型正则与离线特征库)
+   * ============================================================================ */
+  var GLOBAL_KEY = 'HeiGuiSaltLocker';
+  var VERSION = '20260924-v2.0.0';
+
+  // 图像特征比对算法参数
+  var AVATAR_SIGNATURE_WIDTH = 8;
+  var AVATAR_SIGNATURE_HEIGHT = 5;
+  var AVATAR_DISTANCE_THRESHOLD = 1.5;
+  var AVATAR_MARGIN_THRESHOLD = 0.5;
+  var TEAM_CACHE_TTL_MS = 0; // 0 表示战斗期间缓存持久有效
+  var CACHE_LIMIT = 1200;
+
+  // 清理已有实例，防止重复挂载
+  if (window['SaltQueueFormationLocker'] && typeof window['SaltQueueFormationLocker'].destroy === 'function') {
+    window['SaltQueueFormationLocker'].destroy();
+  }
+  if (window[GLOBAL_KEY] && typeof window[GLOBAL_KEY].destroy === 'function') {
+    window[GLOBAL_KEY].destroy();
+  }
+
   var HERO_NAME_BY_ID = {
     101: '司马懿',
     102: '郭嘉',
@@ -1066,60 +1091,330 @@
       '祝融夫人',
       "zhurongfuren",
       "DQgHDgYFEgwKFhIPFBIPEA0LDQoIDQkHDQgGEwkFGBURFhIQEwsJFA0MDgoJDQkHDQkHEg0LFxQRFQ8NFgwJEwwJDgoJDQkHDQkHDwsJFBAOFg0JGQ8JEwwJDwsJDQkHDQkHDQkIEg4MFQ4LFQwIEgwKDQkHDQkH"]],
-    avatarSignatureTemplates = null,
-    state = {
-      'patched': [],
-      'items': [],
-      'teamCache': new Map(),
-      'formationCache': new Map(),
-      'pending': new Map(),
-      'requestCooldown': new Map(),
-      'imagePending': new Map(),
-      'activeRequests': new Set(),
-      'requestChain': Promise['resolve'](),
-      'formationCacheHits': 0,
-      'formationRecognitionRuns': 0,
-      'retryTimer': 0,
-      'lockTimer': 0,
-      'lockedTarget': null,
-      'lockQueue': [],
-      'lastLockActionAt': 0,
-      'autoSpeedUp': true,
-      'speedUpMarchId': 0,
-      'speedUpRequestedAt': 0,
-      'lastBuildingAttackAt': 0,
-      'lastBuildingAttackId': '',
-      'autoDig': false,
-      'autoDigControls': [],
-      'userAutoAttack': null,
-      'countdownText': null,
-      'countdownLastSecond': -1,
-      'sortMode': 'power',
-      'sortOrder': 'desc',
-      'isSorting': false,
-      'btnResourceURL': '',
-      'sortBars': [],
-      'marchTickTimer': 0,
-      'destroyed': false
-    };
+    avatarSignatureTemplates = null;
 
-  /* =========================================================
-   * 基础辅助：时间戳毫秒归一化（自动兼容 10 位秒级与 13 位毫秒级时间戳）
-   * ========================================================= */
+  /* ============================================================================
+   * 2. STATE (统一运行时状态管理树)
+   * ============================================================================ */
+  var state = {
+    // 注入记录与列表 DOM 缓存
+    patched: [],
+    items: [],
+    sortBars: [],
+
+    // 队伍与阵型识别缓存
+    teamCache: new Map(),
+    formationCache: new Map(),
+    pending: new Map(),
+    requestCooldown: new Map(),
+    imagePending: new Map(),
+    activeRequests: new Set(),
+    requestChain: Promise.resolve(),
+    formationCacheHits: 0,
+    formationRecognitionRuns: 0,
+
+    // 定时器句柄
+    retryTimer: 0,
+    lockTimer: 0,
+    marchTickTimer: 0,
+
+    // 锁头核心队列
+    lockedTarget: null,
+    lockQueue: [],
+    lastLockActionAt: 0,
+
+    // 行军加速
+    autoSpeedUp: true,
+    speedUpMarchId: 0,
+    speedUpRequestedAt: 0,
+
+    // 自动刨地
+    autoDig: false,
+    autoDigControls: [],
+    lastBuildingAttackAt: 0,
+    lastBuildingAttackId: '',
+
+    // 原生自动攻击状态备份（锁头退出时精准还原）
+    userAutoAttack: null,
+
+    // HUD 倒计时
+    countdownText: null,
+    countdownLastSecond: -1,
+
+    // 列表排序状态
+    sortMode: 'power',
+    sortOrder: 'desc',
+    isSorting: false,
+    btnResourceURL: '',
+
+    destroyed: false
+  };
+
+  /* ============================================================================
+   * 3. GAME ADAPTER & UTILS (底层游戏反射、通用工具与日志)
+   * ============================================================================ */
+
+  function hasGameRequire() {
+    return typeof window.__require === 'function';
+  }
+
+  function gameRequire(moduleName) {
+    return window.__require(moduleName);
+  }
+
+  function getFgui() {
+    if (typeof fgui !== 'undefined') return fgui;
+    return window.fgui || null;
+  }
+
+  function getLegionWarModule() {
+    if (!hasGameRequire()) return null;
+    try {
+      var Configs = gameRequire('Configs');
+      var ModuleManager = gameRequire('ModuleManager');
+      if (!Configs || !ModuleManager || typeof ModuleManager.GET_MODULE !== 'function') return null;
+      return ModuleManager.GET_MODULE(Configs.ModuleType.LEGION_WAR);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function getBattlefield() {
+    var mod = getLegionWarModule();
+    if (!mod) return null;
+    return mod.battlefield || mod._battlefield || (mod.data && mod.data.battlefield) || null;
+  }
+
+  function getBattlefieldId() {
+    var mod = getLegionWarModule();
+    var bf = getBattlefield();
+    if (!mod) return 'unknown';
+    return String(mod.battlefieldId || mod._battlefieldId || (bf && bf.id) || (mod.data && mod.data.battlefieldId) || 'unknown');
+  }
+
+  function getServerTimeNow() {
+    try {
+      var DateUtil = gameRequire('DateUtil');
+      var utilModule = DateUtil && (DateUtil.default || DateUtil);
+      var serverTime = utilModule && Number(utilModule.serverTime);
+      if (isFinite(serverTime) && serverTime > 0) return serverTime;
+    } catch (e) {}
+    return Date.now();
+  }
+
+  // 时间戳毫秒归一化（自动兼容 10 位秒级与 13 位毫秒级时间戳）
   function normalizeTimestamp(ts) {
     var num = Number(ts) || 0;
     if (num > 0 && num < 100000000000) return num * 1000;
     return num;
   }
 
-  /* =========================================================
-   * 增强模块 1：战力与精力数值深度解析（联动 teamCache 与更多字段）
-   * ========================================================= */
+  function normalizeBattleTimestamp(ts) {
+    var num = Number(ts) || 0;
+    return num > 0 && num < 100000000000 ? num * 1000 : num;
+  }
+
+  function normalizePngDataUrl(url) {
+    if (!url) return '';
+    return String(url).replace(/^data:image\/png;base64,/, '');
+  }
+
+  function safeGetProperty(target, key) {
+    if (!target) return null;
+    if (typeof target.get === 'function') {
+      if (!target.has || target.has(key)) return target.get(key);
+      if (target.has(String(key))) return target.get(String(key));
+      return null;
+    }
+    if (Object.prototype.hasOwnProperty.call(target, key)) return target[key];
+    if (Object.prototype.hasOwnProperty.call(target, String(key))) return target[String(key)];
+    return null;
+  }
+
+  function iterateCollection(col, callback) {
+    if (!col || typeof callback !== 'function') return;
+    if (typeof col.forEach === 'function') {
+      col.forEach(callback);
+      return;
+    }
+    if (typeof col === 'object') {
+      Object.keys(col).forEach(function (k) {
+        callback(col[k], k);
+      });
+    }
+  }
+
+  function shallowCopy(obj) {
+    var copy = {};
+    if (!obj || typeof obj !== 'object') return copy;
+    Object.keys(obj).forEach(function (k) {
+      copy[k] = obj[k];
+    });
+    return copy;
+  }
+
+  function firstPositiveNumber(numArray) {
+    for (var i = 0; i < numArray.length; i++) {
+      var n = Number(numArray[i]);
+      if (isFinite(n) && n > 0) return n;
+    }
+    return 0;
+  }
+
+  function copyPosition(pos) {
+    return pos && isFinite(Number(pos.x)) && isFinite(Number(pos.y)) ? {
+      x: Number(pos.x),
+      y: Number(pos.y)
+    } : null;
+  }
+
+  function samePosition(posA, posB) {
+    return !!(posA && posB && Number(posA.x) === Number(posB.x) && Number(posA.y) === Number(posB.y));
+  }
+
+  function logInfo() {
+    var args = Array.prototype.slice.call(arguments);
+    args.unshift('[黑鬼盐场锁头]');
+    console.log.apply(console, args);
+  }
+
+  function logWarn() {
+    var args = Array.prototype.slice.call(arguments);
+    args.unshift('[SaltQueueLocker]');
+    console.warn.apply(console, args);
+  }
+
+  function clearRecognitionCaches() {
+    state.teamCache.clear();
+    state.formationCache.clear();
+    state.imagePending.clear();
+    state.requestCooldown.clear();
+  }
+
+  /* ============================================================================
+   * 4. PLAYER & BATTLEFIELD (玩家属性深度解析、行军/战场数据模型与状态判定)
+   * ============================================================================ */
+
+  function getServerData(player) {
+    if (!player) return null;
+    try {
+      return player._serverData || player.serverData || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function getRoleCodeId(player) {
+    if (!player) return 0;
+    var serverData = getServerData(player);
+    return firstPositiveNumber([
+      player.id,
+      player.roleId,
+      player.roleCodeId,
+      serverData && serverData.codeIdV2,
+      player.key,
+      player.team && player.team.leaderId,
+      player.team && player.team.leaderRoleId,
+      player.codeIdV2,
+      player.codeId,
+      player.cId,
+      player.team && player.team.leaderCodeIdV2,
+      player.team && player.team.leaderCodeId,
+      player.hasTeam && player.team && player.team.leaderId
+    ]);
+  }
+
+  function getPlayerName(player) {
+    return (player && (player.name || player.nickName || player.roleName || player.nickname)) || '';
+  }
+
+  function isSelfPlayer(player) {
+    var targetCodeId = getRoleCodeId(player);
+    var mod = getLegionWarModule();
+    var bf = getBattlefield();
+    var selfRole = bf && (bf.self || bf.selfRole || bf.role);
+    var selfCodeId = firstPositiveNumber([
+      selfRole && selfRole.id,
+      selfRole && selfRole.roleId,
+      selfRole && selfRole.roleCodeId,
+      mod && mod.selfCodeId,
+      mod && mod._selfCodeId,
+      mod && mod.roleId
+    ]);
+    if (!targetCodeId || !mod) return false;
+    return targetCodeId === selfCodeId;
+  }
+
+  function isPlayerLike(obj) {
+    return !!(obj && typeof obj === 'object' && (obj.id || obj.roleId || obj.roleCodeId || obj.key || obj.codeId || obj.codeIdV2 || obj.cId || obj.name || obj.nickName || obj.roleName));
+  }
+
+  function getPlayerCacheKey(player) {
+    var codeId = getRoleCodeId(player);
+    return codeId ? (getBattlefieldId() + ':' + codeId) : '';
+  }
+
+  function getPlayerStateKey(player) {
+    if (!player) return '';
+    return [
+      player.state,
+      player.isDead ? 1 : 0,
+      Number(player.dieTime) || 0,
+      player.teamState,
+      player.hasTeam ? 1 : 0,
+      Number(player.strength) || 0,
+      Number(player.dC) || 0,
+      Number(player.point) || 0,
+      Number(player.reviveTime) || 0
+    ].join('|');
+  }
+
+  function getPlayerStateType(typeName) {
+    try {
+      var types = gameRequire('types-legion-war');
+      var stateTypes = types && types.LWPlayerStateType;
+      return stateTypes && stateTypes[typeName];
+    } catch (e) {
+      return undefined;
+    }
+  }
+
+  function isMarchState(player) {
+    var st = player && player.state;
+    var marchType = getPlayerStateType('march');
+    return st === 'march' || (marchType !== undefined && st === marchType);
+  }
+
+  function isIdleState(player) {
+    var st = player && player.state;
+    var idleType = getPlayerStateType('idle');
+    return st === 'idle' || st === 0 || (idleType !== undefined && st === idleType);
+  }
+
+  function isCombatState(player) {
+    var st = player && player.state;
+    var combatType = getPlayerStateType('combat');
+    return st === 'combat' || (combatType !== undefined && st === combatType);
+  }
+
+  function isDeadState(player) {
+    var st = player && player.state;
+    var dieType = getPlayerStateType('die');
+    var resurrectType = getPlayerStateType('resurrect');
+    var overType = getPlayerStateType('over');
+    return st === 'die' || st === 'resurrect' || st === 'over' ||
+      (dieType !== undefined && st === dieType) ||
+      (resurrectType !== undefined && st === resurrectType) ||
+      (overType !== undefined && st === overType);
+  }
+
+  // 递归读取深层数值属性
   function readNumberField(obj, keys, depth, seen) {
     if (depth === undefined) depth = 3;
     if (!seen) seen = new Set();
     if (!obj || typeof obj !== 'object' || depth < 0 || seen.has(obj)) return 0;
     seen.add(obj);
+
     for (var i = 0; i < keys.length; i++) {
       var val = obj[keys[i]];
       if (val !== undefined && val !== null && val !== '') {
@@ -1127,6 +1422,7 @@
         if (Number.isFinite(num)) return num;
       }
     }
+
     var subKeys = ['role', 'raw', 'player', 'serverData', '_serverData', 'data', 'roleInfo'];
     for (var j = 0; j < subKeys.length; j++) {
       var subNum = readNumberField(obj[subKeys[j]], keys, depth - 1, seen);
@@ -1137,33 +1433,17 @@
 
   function readEnemyEnergy(enemy) {
     return readNumberField(enemy, [
-      'strength',
-      'energy',
-      'strengthValue',
-      'strengthCnt',
-      'leftStrength',
-      'curStrength',
-      'stamina',
-      'vit',
-      'vitality',
-      'actionPoint',
-      'actionPoints',
-      'fightCnt'
+      'strength', 'energy', 'strengthValue', 'strengthCnt', 'leftStrength',
+      'curStrength', 'stamina', 'vit', 'vitality', 'actionPoint', 'actionPoints', 'fightCnt'
     ]);
   }
 
   function readEnemyPower(role, cached) {
     var basePower = readNumberField({ role: role, cached: cached }, [
-      'power',
-      'fightPower',
-      'combatPower',
-      'battlePower',
-      'totalPower',
-      'score',
-      'dC',
-      'fightCapacity'
+      'power', 'fightPower', 'combatPower', 'battlePower', 'totalPower', 'score', 'dC', 'fightCapacity'
     ]);
     if (basePower > 0) return basePower;
+
     try {
       var cacheKey = getPlayerCacheKey(role);
       var team = cacheKey && state.teamCache && state.teamCache.get(cacheKey);
@@ -1171,17 +1451,113 @@
         if (team.totalPower) return Number(team.totalPower) || 0;
         if (Array.isArray(team.heroIds) && team.heroIds.length) {
           var sum = 0;
-          team.heroIds.forEach(function (h) { sum += Number(h && h.power) || 0; });
+          team.heroIds.forEach(function (h) {
+            sum += Number(h && h.power) || 0;
+          });
           if (sum > 0) return sum;
         }
       }
-    } catch (e) { }
+    } catch (e) {}
     return 0;
   }
 
-  /* =========================================================
-   * 增强模块 2：敌人到达目的地剩余时间计算与目标建筑解析
-   * ========================================================= */
+  function getAttackTargetId(targetPlayer) {
+    if (!targetPlayer) return 0;
+    try {
+      if (targetPlayer.hasTeam && targetPlayer.team && targetPlayer.team.leaderId) {
+        return Number(targetPlayer.team.leaderId) || 0;
+      }
+    } catch (e) {}
+    return getRoleCodeId(targetPlayer);
+  }
+
+  function sameTargetId(idA, idB) {
+    return Number(idA) > 0 && Number(idA) === Number(idB);
+  }
+
+  function playerContainsTarget(player, targetId) {
+    if (!player || !targetId) return false;
+    if (sameTargetId(getAttackTargetId(player), targetId) || sameTargetId(getRoleCodeId(player), targetId)) return true;
+    var team = player.team;
+    var members = team && (team.livePlayers || team.players);
+    return !!(Array.isArray(members) && members.some(function (tp) {
+      return sameTargetId(getRoleCodeId(tp), targetId);
+    }));
+  }
+
+  function isSameLegionTarget(player) {
+    var bf = getBattlefield();
+    var selfRole = bf && bf.self;
+    var targetLegionId = player && player.legionId;
+    var selfLegionId = selfRole && selfRole.legionId;
+    return targetLegionId !== undefined && targetLegionId !== null && targetLegionId !== '' &&
+      Number(targetLegionId) !== 0 && selfLegionId !== undefined && selfLegionId !== null &&
+      selfLegionId !== '' && String(targetLegionId) === String(selfLegionId);
+  }
+
+  function getPlayerById(roleId) {
+    var bf = getBattlefield();
+    var players = bf && bf.players;
+    if (!players || !roleId) return null;
+    try {
+      return players.get(roleId) || players.get(String(roleId)) || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function getTargetMarch(targetPlayer) {
+    var bf = getBattlefield();
+    var marches = bf && bf.marches;
+    var targetId = getAttackTargetId(targetPlayer);
+    var roleCodeId = getRoleCodeId(targetPlayer);
+    var marchId = targetPlayer && targetPlayer.marchId;
+    var matchedMarch = null;
+    var memberIds = [];
+
+    if (!marches) return null;
+    try {
+      if (marchId && typeof marches.get === 'function') {
+        matchedMarch = marches.get(marchId) || marches.get(String(marchId));
+      }
+    } catch (e) {}
+    if (matchedMarch) return matchedMarch;
+
+    try {
+      var team = targetPlayer && targetPlayer.team;
+      var teamPlayers = team && (team.players || team.livePlayers);
+      if (Array.isArray(teamPlayers)) {
+        teamPlayers.forEach(function (tp) {
+          var cid = getRoleCodeId(tp);
+          if (cid) memberIds.push(Number(cid));
+        });
+      }
+    } catch (e) {}
+
+    try {
+      marches.forEach(function (m) {
+        if (matchedMarch || !m) return;
+        var mCode = Number(m.codeId);
+        if (mCode === Number(targetId) || mCode === Number(roleCodeId) || memberIds.indexOf(mCode) >= 0) {
+          matchedMarch = m;
+        }
+      });
+    } catch (e) {}
+    return matchedMarch;
+  }
+
+  function getMarchDestination(targetPlayer) {
+    var march = getTargetMarch(targetPlayer);
+    var toBuilding = march && (march.toBuilding || null);
+    var toPos = copyPosition(march && march.to) || copyPosition(toBuilding && toBuilding.position);
+    var bId = march && march.toBuildingId || (toBuilding && toBuilding.id) || (toPos && (toPos.x + '_' + toPos.y));
+    return march ? {
+      march: march,
+      buildingId: bId || '',
+      position: toPos
+    } : null;
+  }
+
   function getPlayerMarchRemainSeconds(player) {
     if (!player) return 0;
     var endTime = 0;
@@ -1204,7 +1580,7 @@
               endTime = Number(m.endTime) || 0;
             }
           });
-        } catch (e) { }
+        } catch (e) {}
       }
     }
     if (!endTime) return 0;
@@ -1229,73 +1605,870 @@
     return '';
   }
 
-  /* =========================================================
-   * 增强模块 3：部队列表排序核心与 FairyGUI 原生矢量按钮栏（支持4模式完整切换与还原）
-   * ========================================================= */
-  function getTroopSortValue(item, mode) {
-    var player = (item && item.player) || item;
-    if (mode === 'energy') return readEnemyEnergy(player);
-    if (mode === 'power') return readEnemyPower(player);
-    if (mode === 'marchTime') {
-      if (!isMarchState(player)) return 999999;
-      var remain = getPlayerMarchRemainSeconds(player);
-      return remain > 0 ? remain : 0;
+  function findTargetInBuildingQueues(building, targetId) {
+    var queueGroups = [
+      ['attack', building && building.attackerList],
+      ['defense', building && building.defenderList]
+    ];
+    for (var g = 0; g < queueGroups.length; g++) {
+      var qList = queueGroups[g][1];
+      if (!Array.isArray(qList)) continue;
+      for (var i = 0; i < qList.length; i++) {
+        if (playerContainsTarget(qList[i], targetId)) {
+          return {
+            queue: queueGroups[g][0],
+            player: qList[i]
+          };
+        }
+      }
     }
-    return 0;
+    return null;
   }
 
-  function sortTroopsList(page) {
-    if (!page || state.isSorting || state.destroyed) return;
-    state.isSorting = true;
-    try {
-      var ui = page.ui || page.contentPane || page;
-      var list = ui && (ui.m_list || (typeof ui.getChild === 'function' && (ui.getChild('m_list') || ui.getChild('list'))));
-      var listData = page._listData || (ui && ui._listData) || page._dataList;
-      if (!Array.isArray(listData) || listData.length <= 1) return;
+  function readBattleTargetId(battle, side) {
+    var keyList = side === 'left' ? ['leftId', 'leftCodeId'] : ['rightId', 'rightCodeId'];
+    for (var i = 0; i < keyList.length; i++) {
+      var id = Number(battle && battle[keyList[i]]) || 0;
+      if (id > 0) return id;
+    }
+    var playerObj = battle && battle[side];
+    return getAttackTargetId(playerObj) || getRoleCodeId(playerObj) || 0;
+  }
 
-      // 备份未排序原生数据，支持无损还原
-      if (!page.__sfaOriginalListData) {
-        page.__sfaOriginalListData = listData.slice();
+  function makeBattleInfo(battle, targetId) {
+    var leftId = readBattleTargetId(battle, 'left');
+    var rightId = readBattleTargetId(battle, 'right');
+    if (!sameTargetId(leftId, targetId) && !sameTargetId(rightId, targetId)) return null;
+    return {
+      leftId: leftId,
+      rightId: rightId,
+      opponentId: sameTargetId(leftId, targetId) ? rightId : leftId,
+      targetSide: sameTargetId(leftId, targetId) ? 'left' : 'right',
+      startTime: normalizeBattleTimestamp(battle && battle.startTime),
+      endTime: normalizeBattleTimestamp(battle && battle.endTime)
+    };
+  }
+
+  function findTargetBattle(building, targetId) {
+    var battleList = building && building.battleList;
+    var bf = getBattlefield();
+    var bfBattles = bf && bf.battles;
+    var match = null;
+
+    if (Array.isArray(battleList)) {
+      for (var i = 0; i < battleList.length; i++) {
+        match = makeBattleInfo(battleList[i], targetId);
+        if (match) return match;
       }
+    }
+    try {
+      if (bfBattles) {
+        bfBattles.forEach(function (b) {
+          if (!match) match = makeBattleInfo(b, targetId);
+        });
+      }
+    } catch (e) {}
+    return match || null;
+  }
 
-      if (state.sortMode === 'default') {
-        listData.length = 0;
-        for (var k = 0; k < page.__sfaOriginalListData.length; k++) {
-          listData.push(page.__sfaOriginalListData[k]);
-        }
-        if (list) {
-          if (typeof list.refreshVirtualList === 'function') list.refreshVirtualList();
-          else if (typeof list.numItems === 'number') list.numItems = listData.length;
-        }
+  function getLockedBattleEndTime(selfPlayer, targetId) {
+    var endTs = normalizeBattleTimestamp(selfPlayer && selfPlayer.endBattleTime);
+    if (endTs > 0) return endTs;
+    var battle = findTargetBattle(selfPlayer && selfPlayer.curBuilding, targetId);
+    return Number(battle && battle.endTime) || 0;
+  }
+
+  /* ============================================================================
+   * 5. AVATAR & FORMATION (离线图像特征识别算法、队伍解析与阵型判定)
+   * ============================================================================ */
+
+  function base64ToBytes(base64Str) {
+    var atobFn = window.atob || (typeof atob === 'function' ? atob : null);
+    if (!atobFn || !base64Str) return null;
+    var binaryStr = atobFn(base64Str);
+    var bytes = new Uint8Array(binaryStr.length);
+    for (var i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    return bytes;
+  }
+
+  function getAvatarSignatureTemplates() {
+    if (avatarSignatureTemplates) return avatarSignatureTemplates;
+    avatarSignatureTemplates = EMBEDDED_AVATAR_SIGNATURES.map(function (row) {
+      return {
+        heroId: Number(row[0]),
+        heroName: String(row[1]),
+        variant: String(row[2]),
+        signature: base64ToBytes(row[3])
+      };
+    }).filter(function (tpl) {
+      return tpl.heroId >= 0 && tpl.signature && tpl.signature.length > 0;
+    });
+    return avatarSignatureTemplates;
+  }
+
+  function averageSignatureDistance(sigA, sigB) {
+    if (!sigA || !sigB || sigA.length !== sigB.length || !sigA.length) return Infinity;
+    var totalDiff = 0;
+    for (var i = 0; i < sigA.length; i++) {
+      totalDiff += Math.abs(sigA[i] - sigB[i]);
+    }
+    return totalDiff / sigA.length;
+  }
+
+  function findBestAvatarTemplateMatch(signature) {
+    var matchesByHero = {};
+    getAvatarSignatureTemplates().forEach(function (tpl) {
+      var dist = averageSignatureDistance(signature, tpl.signature);
+      var heroKey = tpl.heroId + ':' + tpl.heroName;
+      var curMatch = matchesByHero[heroKey];
+      if (!curMatch || dist < curMatch.distance) {
+        matchesByHero[heroKey] = {
+          heroId: tpl.heroId,
+          heroName: tpl.heroName,
+          variant: tpl.variant,
+          distance: dist
+        };
+      }
+    });
+
+    var sortedMatches = Object.keys(matchesByHero).map(function (k) {
+      return matchesByHero[k];
+    }).sort(function (a, b) {
+      return a.distance - b.distance;
+    });
+
+    if (!sortedMatches.length) return null;
+    sortedMatches[0].margin = sortedMatches.length > 1 ? (sortedMatches[1].distance - sortedMatches[0].distance) : Infinity;
+    sortedMatches[0].accepted = sortedMatches[0].heroId > 0 && sortedMatches[0].distance <= AVATAR_DISTANCE_THRESHOLD && sortedMatches[0].margin >= AVATAR_MARGIN_THRESHOLD;
+    sortedMatches[0].second = sortedMatches[1] || null;
+    return sortedMatches[0];
+  }
+
+  function rasterizeAvatarSignature(srcUrl) {
+    return new Promise(function (resolve, reject) {
+      var ImgClass = window.Image || (typeof Image !== 'undefined' ? Image : null);
+      if (!ImgClass || typeof document === 'undefined' || typeof document.createElement !== 'function') {
+        reject(new Error('当前环境不支持 Canvas 图片识别'));
         return;
       }
-
-      var mode = state.sortMode || 'power';
-      var isAsc = state.sortOrder === 'asc';
-      listData.sort(function (a, b) {
-        var valA = getTroopSortValue(a, mode);
-        var valB = getTroopSortValue(b, mode);
-        var diff = isAsc ? (valA - valB) : (valB - valA);
-        if (diff !== 0) return diff;
-        var subMode = mode === 'energy' ? 'power' : 'energy';
-        var subA = getTroopSortValue(a, subMode);
-        var subB = getTroopSortValue(b, subMode);
-        var subDiff = isAsc ? (subA - subB) : (subB - subA);
-        if (subDiff !== 0) return subDiff;
-        var nameA = String((a && a.player && a.player.name) || (a && a.name) || '');
-        var nameB = String((b && b.player && b.player.name) || (b && b.name) || '');
-        return nameA.localeCompare(nameB);
-      });
-
-      if (list) {
-        if (typeof list.refreshVirtualList === 'function') list.refreshVirtualList();
-        else if (typeof list.numItems === 'number') list.numItems = listData.length;
+      var imgObj = new ImgClass();
+      imgObj.onload = function () {
+        try {
+          var canvas = document.createElement('canvas');
+          var signatureBytes = new Uint8Array(AVATAR_SIGNATURE_WIDTH * AVATAR_SIGNATURE_HEIGHT * 3);
+          var writeIndex = 0;
+          canvas.width = AVATAR_SIGNATURE_WIDTH;
+          canvas.height = AVATAR_SIGNATURE_HEIGHT;
+          var ctx = canvas.getContext('2d', { willReadFrequently: true });
+          ctx.fillStyle = 'rgb(105,77,61)';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(imgObj, 0, 0, canvas.width, canvas.height);
+          var pixelData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+          for (var p = 0; p < pixelData.length; p += 4) {
+            signatureBytes[writeIndex++] = pixelData[p] >> 3;
+            signatureBytes[writeIndex++] = pixelData[p + 1] >> 3;
+            signatureBytes[writeIndex++] = pixelData[p + 2] >> 3;
+          }
+          resolve(signatureBytes);
+        } catch (err) {
+          reject(err);
+        }
+      };
+      imgObj.onerror = function () {
+        reject(new Error('头像 PNG 解码失败'));
+      };
+      var srcStr = String(srcUrl || '');
+      if (srcStr && !srcStr.startsWith('data:') && !srcStr.startsWith('http')) {
+        srcStr = 'data:image/png;base64,' + srcStr;
       }
+      imgObj.src = srcStr;
+    });
+  }
+
+  function matchAvatarImage(srcUrl) {
+    return rasterizeAvatarSignature(srcUrl).then(function (signature) {
+      return findBestAvatarTemplateMatch(signature);
+    });
+  }
+
+  function identifyAvatarImage(hashKey, base64Url) {
+    var pending = state.imagePending.get(hashKey);
+    if (pending) return pending;
+
+    pending = matchAvatarImage(base64Url).then(function (matchResult) {
+      if (state.destroyed) return null;
+      if (matchResult && matchResult.accepted) {
+        return {
+          heroId: matchResult.heroId,
+          heroName: matchResult.heroName,
+          variant: matchResult.variant,
+          distance: matchResult.distance,
+          margin: matchResult.margin,
+          accepted: true
+        };
+      }
+      if (matchResult) {
+        logInfo('头像未达到自动确认阈值:', hashKey, matchResult.heroName, 'distance=' + matchResult.distance.toFixed(3), 'margin=' + matchResult.margin.toFixed(3));
+      }
+      return null;
+    }).catch(function (err) {
+      logWarn('头像识别失败:', hashKey, err && err.message || err);
+      return null;
+    }).then(function (finalRes) {
+      state.imagePending.delete(hashKey);
+      return finalRes;
+    });
+
+    state.imagePending.set(hashKey, pending);
+    return pending;
+  }
+
+  function resolveTeamAvatarImages(teamHeroes) {
+    var missingKeys = [];
+    var seenKeys = {};
+    (teamHeroes || []).forEach(function (hero) {
+      var hash = normalizePngDataUrl(hero && hero.imgName).toLowerCase();
+      if (!hash || seenKeys[hash]) return;
+      seenKeys[hash] = true;
+      missingKeys.push(hash);
+    });
+
+    if (!missingKeys.length) return Promise.resolve(applyImageMatchesToTeam(teamHeroes, {}));
+
+    return fetchTeamImgInfoFromServer(missingKeys).then(function (imgMap) {
+      if (!imgMap) return applyImageMatchesToTeam(teamHeroes, {});
+      return Promise.all(missingKeys.map(function (key) {
+        var base64 = safeGetProperty(imgMap, key);
+        return base64 ? identifyAvatarImage(key, base64) : Promise.resolve(null);
+      })).then(function (results) {
+        var matchMap = {};
+        missingKeys.forEach(function (key, idx) {
+          if (results[idx]) matchMap[key] = results[idx];
+        });
+        return applyImageMatchesToTeam(teamHeroes, matchMap);
+      });
+    });
+  }
+
+  function normalizeSlotIndex(val) {
+    if (val === null || val === undefined || val === '') return -1;
+    var num = Number(val);
+    return isFinite(num) && num >= 0 && num < 5 && Math.floor(num) === num ? num : -1;
+  }
+
+  function findHeroSlotIndex(hero, slotKey, fallbackIndex) {
+    var candidates = [
+      hero && hero.battleTeamSlot,
+      hero && hero.slot,
+      hero && hero.index,
+      slotKey,
+      fallbackIndex
+    ];
+    for (var i = 0; i < candidates.length; i++) {
+      var slot = normalizeSlotIndex(candidates[i]);
+      if (slot >= 0) return slot;
+    }
+    return -1;
+  }
+
+  function normalizeTeamSlotList(teamInfo) {
+    var slots = [null, null, null, null, null];
+    var overflowList = [];
+    var count = 0;
+    if (!teamInfo) return [];
+
+    iterateCollection(teamInfo, function (item, key) {
+      if (!item || typeof item !== 'object' || count >= 5) return;
+      var hero = shallowCopy(item);
+      var slotIdx = findHeroSlotIndex(hero, key, -1);
+      hero.__saltTeamKey = key;
+      hero.__saltTeamSlot = slotIdx;
+      if (slotIdx >= 0 && !slots[slotIdx]) {
+        slots[slotIdx] = hero;
+      } else {
+        overflowList.push(hero);
+      }
+      count++;
+    });
+
+    overflowList.forEach(function (hero) {
+      for (var s = 0; s < 5; s++) {
+        if (!slots[s]) {
+          hero.__saltTeamSlot = s;
+          slots[s] = hero;
+          break;
+        }
+      }
+    });
+
+    return slots.filter(function (it) {
+      return !!it;
+    });
+  }
+
+  function mergeTeamImageInfo(teamList, teamImgMap) {
+    var merged = [];
+    var slotSeen = {};
+    (teamList || []).slice(0, 5).forEach(function (item, idx) {
+      var hero = shallowCopy(item);
+      var teamKey = item && item.__saltTeamKey;
+      var slot = findHeroSlotIndex(hero, teamKey, idx);
+      var imgBase64 = normalizePngDataUrl(safeGetProperty(teamImgMap, teamKey) || safeGetProperty(teamImgMap, slot));
+      if (slot >= 0 && slotSeen[slot]) return;
+      if (slot >= 0) slotSeen[slot] = true;
+      hero.__saltTeamKey = teamKey;
+      hero.__saltTeamSlot = slot;
+      if (imgBase64) hero.imgName = imgBase64;
+      if (imgBase64 && !hero.heroName) hero.heroName = '未知头像';
+      if (hero.curHp === undefined && hero.hp === undefined) hero.curHp = 1;
+      merged.push(hero);
+    });
+    return merged;
+  }
+
+  function extractPlayerHeroes(player) {
+    var rawList = null;
+    if (!player) return null;
+    if (Array.isArray(player.formation)) rawList = player.formation;
+    else if (Array.isArray(player.fighters)) rawList = player.fighters;
+    else if (Array.isArray(player.heroes)) rawList = player.heroes;
+    else if (player.teamInfo) rawList = mergeTeamImageInfo(normalizeTeamSlotList(player.teamInfo), player.teamImgInfo);
+    else if (player.battleTeam) rawList = normalizeTeamSlotList(player.battleTeam);
+
+    if (!rawList || !rawList.length) return null;
+    return rawList.slice(0, 5).map(function (item, idx) {
+      var imgName = normalizePngDataUrl(item && (item.imgName || item.teamImg || item.imgHash || item.imageHash));
+      var heroId = Number(item && (item.heroId || item.confId || item.heroConfId || item.id)) || 0;
+      return {
+        heroId: heroId,
+        heroName: (item && (item.heroName || item.name)) || HERO_NAME_BY_ID[heroId] || (imgName ? '未知头像' : ''),
+        imgName: imgName,
+        battleTeamSlot: findHeroSlotIndex(item, null, idx),
+        curHp: item && item.curHp !== undefined ? item.curHp : (item && item.hp !== undefined ? item.hp : 1),
+        useSkin: item && item.useSkin
+      };
+    }).filter(function (it) {
+      return it.heroId > 0 || !!it.imgName || !!it.heroName;
+    });
+  }
+
+  function resolveHeroName(hero, player) {
+    if (!hero) return '';
+    if (hero.heroName) return String(hero.heroName);
+    if (!hero.heroId) return '';
+    if (HERO_NAME_BY_ID[hero.heroId]) return HERO_NAME_BY_ID[hero.heroId];
+    try {
+      var HeroDataView = gameRequire('HeroDataView').HeroDataView;
+      if (HeroDataView && HeroDataView.getRealName) {
+        var realName = HeroDataView.getRealName(hero, hero.useSkin, !!(player && isSelfPlayer(player)));
+        if (realName) return String(realName);
+      }
+    } catch (e) {}
+    try {
+      var Configs = gameRequire('Configs');
+      var LanguageExt = gameRequire('LanguageExt');
+      var conf = Configs.HeroConf && Configs.HeroConf.getById(hero.heroId);
+      var nick = conf && (conf.nickName || conf.name);
+      if (nick && LanguageExt && LanguageExt.GET_CONTENT) return String(LanguageExt.GET_CONTENT(nick));
+      return nick ? String(nick) : String(hero.heroId);
     } catch (e) {
-    } finally {
-      state.isSorting = false;
+      return String(hero.heroId);
     }
   }
+
+  function containsText(list, text) {
+    return list.some(function (item) {
+      return String(item || '').indexOf(text) >= 0;
+    });
+  }
+
+  function classifyFormation(heroNameList, aliveCount, totalCount, formationType) {
+    for (var i = 0; i < FORMATION_PATTERNS.length; i++) {
+      var pattern = FORMATION_PATTERNS[i];
+      var matches = pattern.heroes.every(function (hName) {
+        return containsText(heroNameList, hName);
+      });
+      if (matches) return pattern.label;
+    }
+    if (totalCount > 0 && aliveCount <= 0) return '空阵';
+    if (totalCount > 0) return '其他';
+    return '未知';
+  }
+
+  function buildRosterFingerprint(heroList) {
+    var slotMap = {};
+    (heroList || []).forEach(function (hero, idx) {
+      if (!hero) return;
+      var slot = findHeroSlotIndex(hero, hero.__saltTeamKey, idx);
+      if (slot < 0 || slotMap[slot]) return;
+      slotMap[slot] = [
+        slot,
+        Number(hero.heroId) || 0,
+        Number(hero.level) || 0,
+        Number(hero.order) || 0,
+        Number(hero.star) || 0,
+        Number(hero.color) || 0,
+        Number(hero.power) || 0,
+        Number(hero.maxHp || hero.hp) || 0,
+        Number(hero.useSkin) || 0,
+        normalizePngDataUrl(hero.imgName).toLowerCase()
+      ].join(':');
+    });
+    if (Object.keys(slotMap).length !== 5) return '';
+    return [0, 1, 2, 3, 4].map(function (s) {
+      return slotMap[s];
+    }).join('|');
+  }
+
+  function buildTeamSummary(player, heroList, cachedSummary) {
+    var heroNames = [];
+    var heroIds = [];
+    var aliveCount = 0;
+    var slotSeen = {};
+    heroList = heroList || [];
+
+    heroList.forEach(function (hero, idx) {
+      if (!hero) return;
+      var slot = findHeroSlotIndex(hero, hero.__saltTeamKey, idx);
+      if (slot >= 0 && slotSeen[slot]) return;
+      if (slot >= 0) slotSeen[slot] = true;
+      var name = resolveHeroName(hero, player);
+      if (hero.heroId) heroIds.push(hero.heroId);
+      if (name) heroNames.push(name);
+      var curHp = hero.curHp;
+      var hp = hero.hp;
+      var isDead = false;
+      if (curHp !== undefined && curHp !== null && curHp !== '') {
+        isDead = isFinite(Number(curHp)) && Number(curHp) === 0;
+      } else if (hp !== undefined && hp !== null && hp !== '') {
+        isDead = isFinite(Number(hp)) && Number(hp) === 0;
+      }
+      if (!isDead) aliveCount++;
+    });
+
+    var totalCount = 5;
+    var label = (cachedSummary && cachedSummary.label) || classifyFormation(heroNames, aliveCount, totalCount, player && player.formationType);
+    if (!heroNames.length && cachedSummary && cachedSummary.heroNames) heroNames = cachedSummary.heroNames.slice();
+    if (!heroIds.length && cachedSummary && cachedSummary.heroIds) heroIds = cachedSummary.heroIds.slice();
+
+    return {
+      label: label,
+      alive: aliveCount,
+      total: totalCount,
+      heroIds: heroIds,
+      heroNames: heroNames,
+      rosterFingerprint: buildRosterFingerprint(heroList),
+      remainingText: aliveCount + '/' + totalCount,
+      text: label + aliveCount + '/' + totalCount
+    };
+  }
+
+  function unwrapTeamInfoResponse(rawResp) {
+    if (!rawResp) return null;
+    if (rawResp.code) return null;
+    if (rawResp.data && rawResp.data.code) return null;
+    if (typeof rawResp.getData === 'function') {
+      try {
+        var dataIdx = gameRequire('data-index');
+        return rawResp.getData(new dataIdx.War_GetTeamInfoResp());
+      } catch (e) {
+        try { return rawResp.getData(); } catch (err) { return null; }
+      }
+    }
+    if (rawResp.data && typeof rawResp.data.getData === 'function') {
+      try {
+        var dataIdx2 = gameRequire('data-index');
+        return rawResp.data.getData(new dataIdx2.War_GetTeamInfoResp());
+      } catch (e) {
+        try { return rawResp.data.getData(); } catch (err) { return null; }
+      }
+    }
+    if (rawResp.body && (rawResp.body.teamInfo || rawResp.body.teamImgInfo)) return rawResp.body;
+    return rawResp.data || rawResp;
+  }
+
+  function parseTeamResponse(resp) {
+    var unwrapped = unwrapTeamInfoResponse(resp);
+    if (!unwrapped || !unwrapped.teamInfo) return null;
+    return mergeTeamImageInfo(normalizeTeamSlotList(unwrapped.teamInfo), unwrapped.teamImgInfo);
+  }
+
+  function unwrapTeamImgInfoResponse(rawResp) {
+    if (!rawResp) return null;
+    if (rawResp.code || (rawResp.data && rawResp.data.code)) return null;
+    if (typeof rawResp.getData === 'function') {
+      try {
+        var dataIdx = gameRequire('data-index');
+        return rawResp.getData(new dataIdx.War_GetTeamImgInfoResp());
+      } catch (e) {
+        try { return rawResp.getData(); } catch (err) { return null; }
+      }
+    }
+    if (rawResp.data && typeof rawResp.data.getData === 'function') {
+      try {
+        var dataIdx2 = gameRequire('data-index');
+        return rawResp.data.getData(new dataIdx2.War_GetTeamImgInfoResp());
+      } catch (e) {
+        try { return rawResp.data.getData(); } catch (err) { return null; }
+      }
+    }
+    if (rawResp.body && rawResp.body.teamInfo) return rawResp.body;
+    return rawResp.data || rawResp;
+  }
+
+  function extractTeamImgInfo(resp) {
+    var unwrapped = unwrapTeamImgInfoResponse(resp);
+    return (unwrapped && unwrapped.teamInfo) || null;
+  }
+
+  function hasAnyImgKey(imgMap, keyList) {
+    return !!(imgMap && keyList.some(function (k) {
+      return !!safeGetProperty(imgMap, k);
+    }));
+  }
+
+  function fetchTeamImgInfoFromServer(imgKeyList) {
+    var mod = getLegionWarModule();
+    if (!imgKeyList || !imgKeyList.length || !mod || typeof mod.sendGetTeamImgInfo !== 'function') {
+      return Promise.resolve(null);
+    }
+    return new Promise(function (resolve) {
+      var completed = false;
+      var timer = 0;
+      var respKey = null;
+      var listening = false;
+
+      function detachListener() {
+        if (listening && respKey && mod.network && typeof mod.network.off === 'function') {
+          mod.network.off(respKey, onResponse, state);
+        }
+        listening = false;
+      }
+
+      function cleanup() {
+        if (timer) window.clearTimeout(timer);
+        timer = 0;
+        detachListener();
+        state.activeRequests.delete(cancel);
+      }
+
+      function finish(data) {
+        if (completed) return;
+        completed = true;
+        cleanup();
+        resolve(data || null);
+      }
+
+      function cancel() {
+        finish(null);
+      }
+
+      function onResponse(msg) {
+        var imgInfo = extractTeamImgInfo(msg);
+        if (hasAnyImgKey(imgInfo, imgKeyList)) finish(imgInfo);
+      }
+
+      try {
+        var dataIdx = gameRequire('data-index');
+        respKey = dataIdx.RESPS && dataIdx.RESPS.War_GetTeamImgInfoResp;
+        if (respKey && mod.network && typeof mod.network.on === 'function') {
+          mod.network.on(respKey, onResponse, state);
+          listening = true;
+        }
+      } catch (e) {}
+
+      state.activeRequests.add(cancel);
+      timer = window.setTimeout(function () {
+        finish(null);
+      }, 3500);
+
+      try {
+        var promise = mod.sendGetTeamImgInfo(imgKeyList.slice());
+        if (promise && typeof promise.then === 'function') {
+          detachListener();
+          promise.then(function (res) {
+            var info = extractTeamImgInfo(res);
+            finish(hasAnyImgKey(info, imgKeyList) ? info : null);
+          }).catch(function (err) {
+            logWarn('头像图片读取失败:', err && err.message || err);
+            finish(null);
+          });
+        } else if (promise) {
+          var info = extractTeamImgInfo(promise);
+          finish(hasAnyImgKey(info, imgKeyList) ? info : null);
+        }
+      } catch (err) {
+        logWarn('头像图片请求异常:', err && err.message || err);
+        finish(null);
+      }
+    });
+  }
+
+  function applyImageMatchesToTeam(teamHeroes, imageMatchMap) {
+    return (teamHeroes || []).map(function (item) {
+      var hero = shallowCopy(item);
+      var imgHash = normalizePngDataUrl(hero && hero.imgName).toLowerCase();
+      var match = imgHash && imageMatchMap && imageMatchMap[imgHash];
+      if (match) {
+        hero.heroId = match.heroId;
+        hero.heroName = match.heroName || match.name;
+      }
+      return hero;
+    });
+  }
+
+  function fetchTeamSummaryFromServer(player, roleCodeId) {
+    var mod = getLegionWarModule();
+    if (!mod || typeof mod.sendGetTeamInfo !== 'function') return Promise.resolve(null);
+
+    return new Promise(function (resolve) {
+      var completed = false;
+      var timer = 0;
+      var respKey = null;
+      var listening = false;
+
+      function detachListener() {
+        if (listening && respKey && mod.network && typeof mod.network.off === 'function') {
+          mod.network.off(respKey, onResponse, state);
+        }
+        listening = false;
+      }
+
+      function cleanup() {
+        if (timer) window.clearTimeout(timer);
+        timer = 0;
+        detachListener();
+        state.activeRequests.delete(cancel);
+      }
+
+      function finish(data) {
+        if (completed) return;
+        completed = true;
+        cleanup();
+        if (!Array.isArray(data)) {
+          resolve(null);
+          return;
+        }
+        recognizeFormationFromTeam(player, data).then(resolve);
+      }
+
+      function cancel() {
+        finish(null);
+      }
+
+      function onResponse(msg) {
+        var teamList = parseTeamResponse(msg);
+        if (Array.isArray(teamList)) finish(teamList);
+      }
+
+      try {
+        var dataIdx = gameRequire('data-index');
+        respKey = dataIdx.RESPS && dataIdx.RESPS.War_GetTeamInfoResp;
+        if (respKey && mod.network && typeof mod.network.on === 'function') {
+          mod.network.on(respKey, onResponse, state);
+          listening = true;
+        }
+      } catch (e) {}
+
+      state.activeRequests.add(cancel);
+      timer = window.setTimeout(function () {
+        finish(null);
+      }, 3500);
+
+      try {
+        var promise = mod.sendGetTeamInfo(roleCodeId);
+        if (promise && typeof promise.then === 'function') {
+          detachListener();
+          promise.then(function (res) {
+            var teamList = parseTeamResponse(res);
+            finish(Array.isArray(teamList) ? teamList : null);
+          }).catch(function (err) {
+            logWarn('阵容读取失败:', getPlayerName(player) || roleCodeId, err && err.message || err);
+            finish(null);
+          });
+        } else if (promise) {
+          var teamList = parseTeamResponse(promise);
+          finish(Array.isArray(teamList) ? teamList : null);
+        }
+      } catch (err) {
+        logWarn('阵容请求异常:', getPlayerName(player) || roleCodeId, err && err.message || err);
+        finish(null);
+      }
+    });
+  }
+
+  function storeTeamSummary(player, summary) {
+    var cacheKey = getPlayerCacheKey(player);
+    if (!state.destroyed && cacheKey && summary) {
+      summary.cachedAt = Date.now();
+      summary.playerStateKey = getPlayerStateKey(player);
+      state.teamCache.delete(cacheKey);
+      state.teamCache.set(cacheKey, summary);
+      while (state.teamCache.size > CACHE_LIMIT) {
+        state.teamCache.delete(state.teamCache.keys().next().value);
+      }
+    }
+  }
+
+  function getCachedTeamSummary(player) {
+    var cacheKey = getPlayerCacheKey(player);
+    var cached = cacheKey ? state.teamCache.get(cacheKey) || null : null;
+    if (!cached) return null;
+    if (TEAM_CACHE_TTL_MS > 0 && Date.now() - Number(cached.cachedAt || 0) > TEAM_CACHE_TTL_MS) {
+      state.teamCache.delete(cacheKey);
+      return null;
+    }
+    return cached;
+  }
+
+  function storeFormationCache(player, summary) {
+    var cacheKey = getPlayerCacheKey(player);
+    if (state.destroyed || !cacheKey || !summary || !summary.label || summary.label === '未知' || summary.label === '空阵') return;
+    state.formationCache.delete(cacheKey);
+    state.formationCache.set(cacheKey, {
+      label: summary.label,
+      heroIds: (summary.heroIds || []).slice(),
+      heroNames: (summary.heroNames || []).slice(),
+      rosterFingerprint: summary.rosterFingerprint || '',
+      identifiedAt: Date.now()
+    });
+    while (state.formationCache.size > CACHE_LIMIT) {
+      state.formationCache.delete(state.formationCache.keys().next().value);
+    }
+  }
+
+  function getCachedFormation(player) {
+    var cacheKey = getPlayerCacheKey(player);
+    return cacheKey ? (state.formationCache.get(cacheKey) || null) : null;
+  }
+
+  function recognizeFormationFromTeam(player, teamHeroes) {
+    var cached = getCachedFormation(player);
+    var fingerprint = buildRosterFingerprint(teamHeroes);
+    var isHit = !!(cached && (!fingerprint || (cached.rosterFingerprint && cached.rosterFingerprint === fingerprint)));
+
+    if (isHit) {
+      state.formationCacheHits += 1;
+      return Promise.resolve(buildTeamSummary(player, teamHeroes, cached));
+    }
+    if (!teamHeroes.length) {
+      return Promise.resolve(buildTeamSummary(player, teamHeroes, cached));
+    }
+
+    state.formationRecognitionRuns += 1;
+    return resolveTeamAvatarImages(teamHeroes).then(function (identifiedHeroes) {
+      var summary = buildTeamSummary(player, identifiedHeroes || teamHeroes);
+      summary.rosterFingerprint = fingerprint;
+      storeFormationCache(player, summary);
+      return summary;
+    }).catch(function (err) {
+      logWarn('未知头像识别流程失败:', err && err.message || err);
+      var fallbackSummary = buildTeamSummary(player, teamHeroes, cached);
+      fallbackSummary.rosterFingerprint = fingerprint;
+      if (!cached) storeFormationCache(player, fallbackSummary);
+      return fallbackSummary;
+    });
+  }
+
+  function requestTeamSummary(player, callback) {
+    var cacheKey = getPlayerCacheKey(player);
+    var roleCodeId = getRoleCodeId(player);
+    var cached = getCachedTeamSummary(player);
+    var localHeroes = extractPlayerHeroes(player);
+    var now = Date.now();
+
+    if (cached) {
+      if (callback) callback(cached);
+      return Promise.resolve(cached);
+    }
+    if (!cacheKey || !roleCodeId) return Promise.resolve(null);
+    if (state.requestCooldown.has(cacheKey) && now - state.requestCooldown.get(cacheKey) < 60000) {
+      return Promise.resolve(null);
+    }
+    if (state.pending.has(cacheKey)) {
+      return state.pending.get(cacheKey).then(function (res) {
+        if (!state.destroyed && callback && res) callback(res);
+        return res;
+      });
+    }
+
+    if (localHeroes && localHeroes.length) {
+      var localPromise = recognizeFormationFromTeam(player, localHeroes).then(function (res) {
+        state.pending.delete(cacheKey);
+        if (state.destroyed) return null;
+        if (res) storeTeamSummary(player, res);
+        if (callback && res) callback(res);
+        return res;
+      }, function (err) {
+        state.pending.delete(cacheKey);
+        throw err;
+      });
+      state.pending.set(cacheKey, localPromise);
+      return localPromise;
+    }
+
+    state.requestCooldown.set(cacheKey, now);
+    var netPromise = state.requestChain.catch(function () {
+      return null;
+    }).then(function () {
+      if (state.destroyed) return null;
+      return fetchTeamSummaryFromServer(player, roleCodeId);
+    }).then(function (res) {
+      state.pending.delete(cacheKey);
+      if (state.destroyed) return null;
+      if (res) storeTeamSummary(player, res);
+      if (res) state.requestCooldown.delete(cacheKey);
+      if (callback && res) callback(res);
+      return res;
+    }, function (err) {
+      state.pending.delete(cacheKey);
+      throw err;
+    });
+
+    state.pending.set(cacheKey, netPromise);
+    state.requestChain = netPromise.catch(function () {
+      return null;
+    });
+    return netPromise;
+  }
+
+  function listParticipantIdentities() {
+    var bf = getBattlefield();
+    var playerMap = bf && (bf.players || bf.roles);
+    var resultList = [];
+    var seenMap = {};
+
+    function addParticipant(p, key) {
+      var codeId = getRoleCodeId(p) || firstPositiveNumber([key]);
+      if (!codeId || seenMap[codeId]) return;
+      seenMap[codeId] = true;
+      var cached = state.teamCache.get(getBattlefieldId() + ':' + codeId) || null;
+      resultList.push({
+        roleCodeId: codeId,
+        name: getPlayerName(p),
+        strength: p && p.strength,
+        state: p && p.state,
+        formation: cached && cached.text || ''
+      });
+    }
+
+    if (playerMap && typeof playerMap.forEach === 'function') {
+      playerMap.forEach(addParticipant);
+    } else if (playerMap && typeof playerMap === 'object') {
+      Object.keys(playerMap).forEach(function (k) {
+        addParticipant(playerMap[k], k);
+      });
+    }
+    return resultList.sort(function (a, b) {
+      return a.roleCodeId - b.roleCodeId;
+    });
+  }
+
+  /* ============================================================================
+   * 6. UI & FAIRYGUI TOOLS (FairyGUI 节点创建、自绘矢量按钮、样式排版与倒计时 HUD)
+   * ============================================================================ */
 
   function setNodeSize(node, w, h) {
     if (!node) return;
@@ -1310,65 +2483,551 @@
     else { node.x = x; node.y = y; }
   }
 
+  function copyTextStyle(sourceNode, targetNode) {
+    if (!targetNode) return;
+    if (sourceNode) {
+      var styleKeys = ['font', 'fontSize', 'color', 'bold', 'italic', 'underline', 'stroke', 'strokeColor', 'shadowColor', 'align', 'verticalAlign', 'leading', 'letterSpacing'];
+      styleKeys.forEach(function (k) {
+        if (sourceNode[k] !== undefined) {
+          try { targetNode[k] = sourceNode[k]; } catch (e) {}
+        }
+      });
+    }
+    if (!targetNode.fontSize) targetNode.fontSize = 15;
+    if (!targetNode.color) targetNode.color = '#d87532';
+  }
+
+  function estimateTextWidth(textNode) {
+    var str = String(textNode && textNode.text || '');
+    var fs = Number(textNode && textNode.fontSize || 15);
+    return Math.max(8, Math.ceil(str.length * fs * 0.82));
+  }
+
+  function isSaltQueueOverlay(node) {
+    return !!(node && (
+      node.name === 'saltQueueSummary' ||
+      node.name === 'saltQueueRoleId' ||
+      node.name === 'saltQueueRemaining' ||
+      node.name === 'saltQueueLockBox' ||
+      node.name === 'saltQueueLockCheck' ||
+      node.name === 'saltQueueLockText'
+    ));
+  }
+
+  function getChildren(node) {
+    var list = [];
+    if (!node) return list;
+    if (typeof node.numChildren === 'number' && typeof node.getChildAt === 'function') {
+      for (var i = 0; i < node.numChildren; i++) {
+        try { list.push(node.getChildAt(i)); } catch (e) {}
+      }
+    }
+    if (Array.isArray(node._children)) {
+      list = list.concat(node._children);
+    } else if (node._children && Array.isArray(node._children._items)) {
+      list = list.concat(node._children._items);
+    }
+    return list.filter(function (item, idx) {
+      return item && list.indexOf(item) === idx;
+    });
+  }
+
+  function someDescendant(node, predicate, depth, visited) {
+    if (!node || depth > 5) return false;
+    visited = visited || [];
+    if (visited.indexOf(node) >= 0) return false;
+    visited.push(node);
+    return getChildren(node).some(function (child) {
+      if (predicate(child)) return true;
+      return someDescendant(child, predicate, depth + 1, visited);
+    });
+  }
+
+  function isTextNode(node) {
+    return !!(node && !isSaltQueueOverlay(node) && typeof node.text === 'string');
+  }
+
+  function findTextNodeByProps(node, propList) {
+    for (var i = 0; i < propList.length; i++) {
+      var candidate = node && node[propList[i]];
+      if (isTextNode(candidate)) return candidate;
+    }
+    return null;
+  }
+
+  function findStatusTextNode(node) {
+    var match = findTextNodeByProps(node, ['m_txtStatus', 'm_txtState', 'm_state', 'm_status', 'm_txtAction', 'm_txtDesc']);
+    if (match) return match;
+
+    someDescendant(node, function (child) {
+      if (!isTextNode(child)) return false;
+      var str = String(child.text || '');
+      if (str.indexOf('驻守') >= 0 || str.indexOf('驻扎') >= 0 || str.indexOf('驻防') >= 0 ||
+        str.indexOf('防守') >= 0 || str.indexOf('交战') >= 0 || str.indexOf('行军') >= 0 || str.indexOf('返回') >= 0) {
+        match = child;
+        return true;
+      }
+      return false;
+    }, 0);
+    return match;
+  }
+
+  function findStrengthTextNode(node) {
+    var match = findTextNodeByProps(node, ['m_strength', 'm_txtStrength', 'm_txtEnergy', 'm_energy', 'm_txtSpirit', 'm_spirit']);
+    if (match) return match;
+
+    someDescendant(node, function (child) {
+      if (!isTextNode(child)) return false;
+      if (String(child.text || '').indexOf('精力') >= 0) {
+        match = child;
+        return true;
+      }
+      return false;
+    }, 0);
+    return match;
+  }
+
+  function findRoleIdTextNode(node) {
+    var match = null;
+    someDescendant(node, function (child) {
+      if (!isTextNode(child)) return false;
+      if (/^ID[:：]\s*\d+$/i.test(String(child.text || '').trim())) {
+        match = child;
+        return true;
+      }
+      return false;
+    }, 0);
+    return match;
+  }
+
+  function findPlayerNameTextNode(item, player) {
+    var pName = getPlayerName(player);
+    var node = findTextNodeByProps(item, ['m_txtName', 'm_name', 'm_txtPlayerName', 'm_playerName', 'm_txtRoleName', 'm_roleName']);
+    if (node) return node;
+    if (!pName) return null;
+
+    someDescendant(item, function (child) {
+      if (!isTextNode(child)) return false;
+      var t = String(child.text || '');
+      if (t && (t === pName || t.indexOf(pName) >= 0 || pName.indexOf(t.replace(/\.\.\.$/, '')) >= 0)) {
+        node = child;
+        return true;
+      }
+      return false;
+    }, 0);
+    return node;
+  }
+
+  function ensureTextField(parent, cacheProp, name, touchable) {
+    var fg = getFgui();
+    if (!parent || !fg || !fg.GTextField) return null;
+    if (parent[cacheProp]) {
+      if (state.items.indexOf(parent) < 0) state.items.push(parent);
+      parent[cacheProp].touchable = !!touchable;
+      parent[cacheProp].singleLine = true;
+      return parent[cacheProp];
+    }
+    var tf = new fg.GTextField();
+    tf.name = name;
+    tf.touchable = !!touchable;
+    tf.autoSize = fg.AutoSizeType ? fg.AutoSizeType.None : 0;
+    tf.fontSize = 15;
+    tf.color = '#d87532';
+    tf.bold = false;
+    tf.stroke = 0;
+    tf.singleLine = true;
+    tf.text = '';
+    setNodeSize(tf, 120, 22);
+    parent.addChild(tf);
+    parent[cacheProp] = tf;
+    if (state.items.indexOf(parent) < 0) state.items.push(parent);
+    return tf;
+  }
+
+  function getCountdownRoot() {
+    var fg = getFgui();
+    var GRoot = fg && fg.GRoot;
+    return (GRoot && (GRoot.inst || (GRoot.getInst && GRoot.getInst()))) || null;
+  }
+
+  function hideMarchCountdown() {
+    if (state.countdownText) state.countdownText.visible = false;
+    state.countdownLastSecond = -1;
+  }
+
+  function showCountdownMessage(msg, sec) {
+    var rootNode = getCountdownRoot();
+    if (sec === state.countdownLastSecond && state.countdownText && state.countdownText.text === msg) return;
+    state.countdownLastSecond = sec;
+
+    if (!state.countdownText && rootNode && getFgui().GTextField) {
+      try {
+        state.countdownText = new (getFgui().GTextField)();
+        state.countdownText.name = 'saltQueueMarchCountdown';
+        state.countdownText.touchable = false;
+        state.countdownText.fontSize = 17;
+        state.countdownText.color = '#ffe3a1';
+        state.countdownText.stroke = 2;
+        state.countdownText.strokeColor = '#3b1e12';
+        state.countdownText.singleLine = true;
+        setNodeSize(state.countdownText, 280, 28);
+        setNodePos(state.countdownText, 24, 24);
+        rootNode.addChild(state.countdownText);
+      } catch (e) {}
+    }
+    var tf = state.countdownText;
+    if (tf) {
+      tf.text = msg;
+      tf.visible = true;
+    }
+    logInfo(msg);
+  }
+
+  function updateMarchCountdown(player, isReturning) {
+    if (!player || !isMarchState(player) || !Number(player.endMarchTime)) return hideMarchCountdown();
+    var endTime = normalizeTimestamp(player.endMarchTime);
+    var remainMs = Math.max(0, endTime - getServerTimeNow());
+    var remainSec = Math.ceil(remainMs / 1000);
+    var prefix = isReturning ? '返回原建筑' : '前往锁定建筑';
+    showCountdownMessage(prefix + '：' + remainSec + '秒', remainSec);
+  }
+
+  function updateTargetArrivalCountdown(lockRecord, targetPlayer) {
+    if (!lockRecord || !lockRecord.waitingForTarget) return false;
+    var marchDest = getMarchDestination(targetPlayer);
+    if (marchDest) {
+      lockRecord.targetEndMarchTime = Number(marchDest.march && marchDest.march.endTime) || lockRecord.targetEndMarchTime || 0;
+      if (!lockRecord.destinationKnown) {
+        lockRecord.buildingId = marchDest.buildingId || '';
+        lockRecord.position = marchDest.position;
+        lockRecord.destinationKnown = !!(lockRecord.buildingId || lockRecord.position);
+      }
+    }
+    var endTs = normalizeTimestamp(Number(lockRecord.targetEndMarchTime) || Number(targetPlayer && targetPlayer.endMarchTime) || 0);
+    if (!endTs) {
+      hideMarchCountdown();
+      return false;
+    }
+    var remainMs = Math.max(0, endTs - getServerTimeNow());
+    var remainSec = Math.ceil(remainMs / 1000);
+    var targetName = getPlayerName(targetPlayer) || ('ID:' + getRoleCodeId(targetPlayer));
+    var destName = getPlayerMarchTargetName(targetPlayer);
+    var msg = '锁定【' + targetName + '】' + (destName ? ('前往[' + destName + ']') : '') + ' 剩余 ' + remainSec + ' 秒到达';
+    showCountdownMessage(msg, remainSec);
+    return true;
+  }
+
+  function updateLockedBattleCountdown(selfPlayer, targetId) {
+    var endTs = getLockedBattleEndTime(selfPlayer, targetId);
+    if (!endTs) return showCountdownMessage('正在与锁定目标战斗', -2);
+    var remainMs = Math.max(0, endTs - getServerTimeNow());
+    var remainSec = Math.ceil(remainMs / 1000);
+    showCountdownMessage('与锁定目标战斗还有 ' + remainSec + ' 秒', remainSec);
+  }
+
+  function updateThirdPartyBattleCountdown(battle, lockRecord) {
+    if (!battle) return false;
+    var endTs = Number(battle.endTime) || 0;
+    var remainSec = endTs > 0 ? Math.ceil(Math.max(0, endTs - getServerTimeNow()) / 1000) : -1;
+    var battleKey = battle.leftId + '>' + battle.rightId + '@' + endTs;
+    if (lockRecord && lockRecord.waitingBattleKey !== battleKey) {
+      lockRecord.waitingBattleKey = battleKey;
+      logInfo('识别第三方战斗:', battle.leftId, '攻击', battle.rightId, '结束时间:', endTs);
+    }
+    showCountdownMessage(remainSec >= 0 ? ('锁定目标战斗中，剩余 ' + remainSec + ' 秒') : '锁定目标正在第三方战斗，等待回到队列', remainSec >= 0 ? remainSec : -3);
+    return true;
+  }
+
+  function layoutTeamSummaryText(item, summaryTextNode, player) {
+    if (!item || !summaryTextNode) return;
+    var strengthNode = findStrengthTextNode(item);
+    var statusNode = findStatusTextNode(item);
+    var nameNode = findPlayerNameTextNode(item, player);
+    var anchorNode = strengthNode || statusNode || nameNode;
+    var startX = anchorNode && typeof anchorNode.x === 'number' ? anchorNode.x : 118;
+    var startY = anchorNode && typeof anchorNode.y === 'number' ? anchorNode.y : 28;
+    var targetY = startY;
+    var fightBtnX = item.m_btnFight && typeof item.m_btnFight.x === 'number' ? item.m_btnFight.x : (item.width || 520) - 8;
+
+    var lockBtn = item.__saltQueueLockButton;
+    var fightBtn = item.m_btnFight;
+
+    copyTextStyle(anchorNode, summaryTextNode);
+    summaryTextNode.bold = false;
+
+    if (lockBtn && fightBtn && lockBtn.visible !== false) {
+      var minBtnX = Math.min(Number(lockBtn.x) || 0, Number(fightBtn.x) || 0);
+      var maxBtnRight = Math.max((Number(lockBtn.x) || 0) + (Number(lockBtn.width) || 120), (Number(fightBtn.x) || 0) + (Number(fightBtn.width) || 120));
+      var topY = Math.max(0, Math.min(Number(lockBtn.y) || 20, Number(fightBtn.y) || 20) - 24);
+      summaryTextNode.fontSize = Math.max(13, Number(summaryTextNode.fontSize) || 15);
+      summaryTextNode.align = 'center';
+      summaryTextNode.verticalAlign = 'middle';
+      summaryTextNode.sortingOrder = 9998;
+      setNodeSize(summaryTextNode, Math.max(120, maxBtnRight - minBtnX), 22);
+      setNodePos(summaryTextNode, minBtnX, topY);
+      return;
+    }
+
+    if (strengthNode) {
+      startX = strengthNode.x + estimateTextWidth(strengthNode) + 8;
+      targetY = strengthNode.y;
+    } else if (statusNode) {
+      startX = statusNode.x + estimateTextWidth(statusNode) + 8;
+      targetY = statusNode.y;
+    } else if (nameNode) {
+      startX = Math.max(250, Math.min(fightBtnX - 118, nameNode.x + estimateTextWidth(nameNode) + 10));
+      targetY = nameNode.y;
+    }
+
+    var maxRight = fightBtnX - 8;
+    startX = Math.min(startX, maxRight - 1);
+    var textW = estimateTextWidth(summaryTextNode) + 4;
+    var finalW = Math.max(1, Math.min(textW, maxRight - startX));
+
+    setNodeSize(summaryTextNode, finalW, Number(strengthNode && strengthNode.height) || Math.max(18, (summaryTextNode.fontSize || 15) + 5));
+    setNodePos(summaryTextNode, startX, targetY);
+  }
+
+  function layoutRemainingText(item, remainingTextNode) {
+    if (!item || !remainingTextNode) return false;
+    var statusNode = findStatusTextNode(item);
+    var fightBtnX = item.m_btnFight && typeof item.m_btnFight.x === 'number' ? item.m_btnFight.x : (item.width || 520) - 8;
+    if (!statusNode) return false;
+
+    copyTextStyle(statusNode, remainingTextNode);
+    var startX = statusNode.x + estimateTextWidth(statusNode) + 6;
+    var textW = estimateTextWidth(remainingTextNode) + 4;
+    if (startX + textW > fightBtnX - 8) {
+      startX = Math.max(statusNode.x, fightBtnX - textW - 8);
+    }
+    setNodeSize(remainingTextNode, textW, Number(statusNode.height) || Math.max(18, (remainingTextNode.fontSize || 15) + 5));
+    setNodePos(remainingTextNode, startX, statusNode.y);
+    return true;
+  }
+
+  function layoutRoleIdText(item, roleIdTextNode, player) {
+    if (!item || !roleIdTextNode) return;
+    var nameNode = findPlayerNameTextNode(item, player);
+    var strengthNode = findStrengthTextNode(item);
+    var styleSource = strengthNode || nameNode;
+    var xSource = nameNode || strengthNode;
+
+    copyTextStyle(styleSource, roleIdTextNode);
+    var baseFontSize = Number((styleSource && styleSource.fontSize) || roleIdTextNode.fontSize || 15);
+    roleIdTextNode.fontSize = Math.max(10, Math.min(13, baseFontSize - 2));
+    roleIdTextNode.bold = false;
+    setNodeSize(roleIdTextNode, 90, roleIdTextNode.fontSize + 5);
+    setNodePos(roleIdTextNode,
+      xSource && typeof xSource.x === 'number' ? xSource.x : 105,
+      Math.max(1, ((nameNode && typeof nameNode.y === 'number' ? nameNode.y : 22) - roleIdTextNode.fontSize - 2))
+    );
+  }
+
+  function renderTeamSummary(item, player, summary) {
+    var tf = ensureTextField(item, '__saltQueueSummaryText', 'saltQueueSummary', false);
+    if (!tf) return;
+    tf.text = '阵容:' + (summary && summary.label || '识别中') + ' ' + (summary && summary.total ? (summary.alive + '/' + summary.total) : '--/5');
+    tf.visible = true;
+    tf.touchable = false;
+    layoutTeamSummaryText(item, tf, player);
+  }
+
+  function renderTeamRemaining(item, summary) {
+    var tf = ensureTextField(item, '__saltQueueRemainingText', 'saltQueueRemaining', false);
+    if (!tf) return;
+    tf.text = summary && summary.total ? (summary.alive + '/' + summary.total) : '--/5';
+    tf.visible = false;
+    tf.touchable = false;
+    tf.visible = layoutRemainingText(item, tf);
+  }
+
+  function renderPlayerRoleId(item, player) {
+    var codeId = getRoleCodeId(player);
+    var existingNode = findRoleIdTextNode(item);
+    if (existingNode && existingNode !== item.__saltQueueRoleIdText) {
+      if (item.__saltQueueRoleIdText) item.__saltQueueRoleIdText.visible = false;
+      return;
+    }
+    var tf = ensureTextField(item, '__saltQueueRoleIdText', 'saltQueueRoleId', false);
+    if (!tf || !codeId) {
+      if (tf) tf.visible = false;
+      return;
+    }
+    tf.text = 'ID:' + codeId;
+    tf.visible = true;
+    tf.touchable = false;
+    layoutRoleIdText(item, tf, player);
+  }
+
+  function hideLockOverlay(item) {
+    if (!item) return;
+    if (item.__saltQueueLockBoxText) {
+      item.__saltQueueLockBoxText.visible = false;
+      item.__saltQueueLockBoxText.touchable = false;
+    }
+    if (item.__saltQueueLockCheckText) {
+      item.__saltQueueLockCheckText.visible = false;
+      item.__saltQueueLockCheckText.touchable = false;
+    }
+    if (item.__saltQueueLockText) {
+      item.__saltQueueLockText.visible = false;
+      item.__saltQueueLockText.touchable = false;
+      item.__saltQueueLockText.text = '';
+    }
+  }
+
+  function hideSaltQueueOverlay(item) {
+    if (!item) return;
+    if (item.__saltQueueSummaryText) item.__saltQueueSummaryText.visible = false;
+    if (item.__saltQueueRoleIdText) item.__saltQueueRoleIdText.visible = false;
+    if (item.__saltQueueRemainingText) item.__saltQueueRemainingText.visible = false;
+    if (item.__saltQueueMarchRemainText) item.__saltQueueMarchRemainText.visible = false;
+    hideLockOverlay(item);
+    if (item.__saltQueueLockButton) {
+      item.__saltQueueLockButton.visible = false;
+      item.__saltQueueLockButton.touchable = false;
+    }
+  }
+
+  /* ============================================================================
+   * 7. TROOP SORTING (部队列表排序核心：游戏原生木纹UI质感 + Schwartzian预计算高性能引擎)
+   * ============================================================================ */
+
+  // 降级模式下的自绘高保真木纹圆角按钮背景
   function drawNativeSortButtonBg(graph, active) {
     if (!graph) return;
     try {
       if (typeof graph.clearGraphics === 'function') graph.clearGraphics();
-      var fill = active ? 0x60a83d : 0xd5bd66; // 激活亮绿，未激活淡棕黄
-      var line = active ? 0x285c25 : 0x6b4a22; // 边框
-      if (typeof graph.drawRoundRect === 'function') graph.drawRoundRect(2, line, fill, 6);
+      var fill = active ? 0x60a83d : 0xc7a956; // 激活状态鲜活草绿，默认温润木色
+      var line = active ? 0x245520 : 0x66441d; // 质感边框描边
+      if (typeof graph.drawRoundRect === 'function') graph.drawRoundRect(2, line, fill, 5);
       else if (typeof graph.drawRect === 'function') graph.drawRect(2, line, fill);
-    } catch (e) { }
+    } catch (e) {}
   }
 
+  // 切换排序按钮的高亮与非高亮外观（原生按钮调色 + 自绘降级调色）
   function setNativeSortButtonActive(btn, active) {
     if (!btn) return;
     var label = btn.__sfaLabel || btn;
-    label.color = active ? '#ffffff' : '#4b2a18';
-    label.bold = true;
-    drawNativeSortButtonBg(btn.__sfaBg, active);
+    if (btn.__sfaIsNative) {
+      if (active) {
+        label.color = '#79ff4d'; // 亮绿激活高光色
+        if (typeof cc !== 'undefined' && cc.Color) {
+          label.shadowColor = new cc.Color(18, 55, 12, 240); // 浓密深绿投影
+        }
+      } else {
+        label.color = '#fff4df'; // 原生米白温和底色
+        if (typeof cc !== 'undefined' && cc.Color) {
+          label.shadowColor = new cc.Color(122, 69, 48, 220); // 原生暖棕立体投影
+        }
+      }
+    } else {
+      label.color = active ? '#ffffff' : '#4b2a18';
+      drawNativeSortButtonBg(btn.__sfaBg, active);
+    }
   }
 
-  function makeNativeSortButton(fg, text, onClick, width) {
+  // 创建原生 UI 按钮（优先复用 ui_common.BtnInfo2 原生木质组件，带 Cocos 立体投影与按压反馈）
+  function makeNativeSortButton(fg, text, onClick, width, height) {
     if (!fg) fg = getFgui();
-    var w = width || 80;
-    var h = 34;
-    if (!fg || typeof fg.GComponent !== 'function' || typeof fg.GGraph !== 'function') {
-      var fallback = new (fg ? fg.GTextField : function () { })();
-      fallback.text = text;
-      fallback.fontSize = 17;
-      fallback.bold = true;
-      fallback.align = 'center';
-      fallback.verticalAlign = 'middle';
-      fallback.color = '#4b2a18';
-      fallback.touchable = true;
-      setNodeSize(fallback, w, h);
-      if (typeof fallback.onClick === 'function') fallback.onClick(onClick);
-      return fallback;
-    }
-    var btn = new fg.GComponent();
-    btn.touchable = true;
-    setNodeSize(btn, w, h);
+    var w = width || 62;
+    var h = height || 30;
+    var btn = null;
 
-    var bg = new fg.GGraph();
+    // 1. 尝试从游戏原生包创建 BtnInfo2（自带木质纹理与按压缩放反馈）
+    try {
+      if (fg && fg.UIPackage && typeof fg.UIPackage.createObject === 'function') {
+        btn = fg.UIPackage.createObject('ui_common', 'BtnInfo2');
+      }
+    } catch (e) {
+      btn = null;
+    }
+
+    if (btn) {
+      btn.title = '';
+      btn.icon = '';
+      // 隐藏内部多余图标节点（如 n0 等）
+      if (btn.numChildren > 0) {
+        for (var i = 0; i < btn.numChildren; i++) {
+          var ch = btn.getChildAt(i);
+          if (ch && (ch.name === 'n0' || ch.name === 'icon')) {
+            ch.visible = false;
+          }
+        }
+      }
+      setNodeSize(btn, w, h);
+
+      var nativeLabel = new fg.GTextField();
+      nativeLabel.name = 'customLabel';
+      nativeLabel.text = text;
+      nativeLabel.fontSize = 15;
+      nativeLabel.bold = true;
+      nativeLabel.color = '#fff4df';
+      nativeLabel.align = 'center';
+      nativeLabel.verticalAlign = 'middle';
+      nativeLabel.singleLine = true;
+      nativeLabel.touchable = false;
+      setNodeSize(nativeLabel, w, h);
+      setNodePos(nativeLabel, 0, 0);
+
+      if (typeof cc !== 'undefined' && cc.Vec2 && cc.Color) {
+        nativeLabel.shadowOffset = new cc.Vec2(0, 2);
+        nativeLabel.shadowColor = new cc.Color(122, 69, 48, 220);
+      }
+
+      btn.addChild(nativeLabel);
+      btn.__sfaLabel = nativeLabel;
+      btn.__sfaIsNative = true;
+      if (typeof btn.onClick === 'function') btn.onClick(onClick);
+      return btn;
+    }
+
+    // 2. 降级方案：高保真自绘原生质感按键（带手势按压缩放反馈）
+    var comp = new (fg && fg.GComponent ? fg.GComponent : function () {})();
+    comp.touchable = true;
+    setNodeSize(comp, w, h);
+
+    var bg = new (fg && fg.GGraph ? fg.GGraph : function () {})();
     setNodeSize(bg, w, h);
 
-    var label = new fg.GTextField();
-    label.text = text;
-    label.fontSize = 17;
-    label.bold = true;
-    label.align = 'center';
-    label.verticalAlign = 'middle';
-    label.touchable = false;
-    setNodeSize(label, w, h);
+    var fallbackLabel = new (fg && fg.GTextField ? fg.GTextField : function () {})();
+    fallbackLabel.text = text;
+    fallbackLabel.fontSize = 15;
+    fallbackLabel.bold = true;
+    fallbackLabel.align = 'center';
+    fallbackLabel.verticalAlign = 'middle';
+    fallbackLabel.color = '#4b2a18';
+    fallbackLabel.singleLine = true;
+    fallbackLabel.touchable = false;
+    setNodeSize(fallbackLabel, w, h);
+    setNodePos(fallbackLabel, 0, 0);
 
-    btn.addChild(bg);
-    btn.addChild(label);
-    btn.__sfaBg = bg;
-    btn.__sfaLabel = label;
+    if (typeof cc !== 'undefined' && cc.Vec2 && cc.Color) {
+      fallbackLabel.shadowOffset = new cc.Vec2(0, 2);
+      fallbackLabel.shadowColor = new cc.Color(100, 55, 30, 220);
+    }
+
+    comp.addChild(bg);
+    comp.addChild(fallbackLabel);
+    comp.__sfaBg = bg;
+    comp.__sfaLabel = fallbackLabel;
+    comp.__sfaIsNative = false;
+
+    // 手势缩放回弹微动效
+    if (typeof comp.onTouchBegin === 'function') {
+      comp.onTouchBegin(function () {
+        if (typeof comp.setScale === 'function') comp.setScale(0.95, 0.95);
+      }, comp);
+    }
+    if (typeof comp.onTouchEnd === 'function') {
+      comp.onTouchEnd(function () {
+        if (typeof comp.setScale === 'function') comp.setScale(1.0, 1.0);
+      }, comp);
+    }
+
     drawNativeSortButtonBg(bg, false);
-    if (typeof btn.onClick === 'function') btn.onClick(onClick);
-    return btn;
+    if (typeof comp.onClick === 'function') comp.onClick(onClick);
+    return comp;
   }
 
   function updateNativeSortButtons(page) {
@@ -1398,13 +3057,14 @@
     if (!page.__sfaSortBar) {
       var label = new fg.GTextField();
       label.text = '排序:';
-      label.fontSize = 17;
+      label.fontSize = 15;
       label.bold = true;
-      label.color = '#9a4b31';
+      label.color = '#8f4024';
       label.align = 'right';
       label.verticalAlign = 'middle';
+      label.singleLine = true;
       label.touchable = false;
-      setNodeSize(label, 44, 34);
+      setNodeSize(label, 36, 30);
 
       var energy = makeNativeSortButton(fg, '精力', function () {
         if (state.sortMode === 'energy') {
@@ -1414,8 +3074,8 @@
           state.sortOrder = 'desc';
         }
         updateNativeSortButtons(page);
-        sortTroopsList(page);
-      }, 76);
+        requestSortTroopsList(page);
+      }, 62, 30);
 
       var power = makeNativeSortButton(fg, '战力', function () {
         if (state.sortMode === 'power') {
@@ -1425,22 +3085,22 @@
           state.sortOrder = 'desc';
         }
         updateNativeSortButtons(page);
-        sortTroopsList(page);
-      }, 76);
+        requestSortTroopsList(page);
+      }, 62, 30);
 
-      var marchTime = makeNativeSortButton(fg, '到达时间', function () {
+      var marchTime = makeNativeSortButton(fg, '到达', function () {
         state.sortMode = 'marchTime';
         state.sortOrder = 'asc';
         updateNativeSortButtons(page);
-        sortTroopsList(page);
-      }, 82);
+        requestSortTroopsList(page);
+      }, 62, 30);
 
       var restore = makeNativeSortButton(fg, '还原', function () {
         state.sortMode = 'default';
         state.sortOrder = 'desc';
         updateNativeSortButtons(page);
-        sortTroopsList(page);
-      }, 54);
+        requestSortTroopsList(page);
+      }, 50, 30);
 
       ui.addChild(label);
       ui.addChild(energy);
@@ -1453,13 +3113,14 @@
       }
     }
 
-    var y = Math.max(0, Number(list ? list.y : 270) - 44);
-    var right = Number(ui.width || 720) - 18;
-    var restoreX = right - 54;
-    var marchTimeX = restoreX - 82 - 6;
-    var powerX = marchTimeX - 76 - 6;
-    var energyX = powerX - 76 - 6;
-    var labelX = energyX - 44 - 4;
+    // 紧凑排版：总宽 290px，整体右对齐，彻底避让左侧驻扎部队数量文本与分屏裁剪
+    var y = Math.max(0, Number(list ? list.y : 270) - 38);
+    var right = Number(ui.width || 720) - 16;
+    var restoreX = right - 50;
+    var marchTimeX = restoreX - 62 - 5;
+    var powerX = marchTimeX - 62 - 5;
+    var energyX = powerX - 62 - 5;
+    var labelX = energyX - 36 - 4;
 
     var bar = page.__sfaSortBar;
     setNodePos(bar.label, labelX, y);
@@ -1470,9 +3131,115 @@
     updateNativeSortButtons(page);
   }
 
-  /* =========================================================
-   * 增强模块 4：列表项行军倒计时文本节点与 1s 心跳渲染（规避出战按钮遮挡）
-   * ========================================================= */
+  // 帧级防抖合并：将同一渲染帧内连续触发的刷新合并为单次高性能重排
+  function requestSortTroopsList(page) {
+    if (!page || state.destroyed) return;
+    if (page.__sfaSortPending) return;
+    page.__sfaSortPending = true;
+    window.setTimeout(function () {
+      page.__sfaSortPending = false;
+      if (state.destroyed) return;
+      sortTroopsList(page);
+    }, 16);
+  }
+
+  // 【高性能核心引擎】：采用 Schwartzian 变换（预提取轻量元组）实现 O(N) 属性映射与 O(N log N) 纯数值排序
+  function sortTroopsList(page) {
+    if (!page || state.isSorting || state.destroyed) return;
+    state.isSorting = true;
+    try {
+      var ui = page.ui || page.contentPane || page;
+      var list = ui && (ui.m_list || (typeof ui.getChild === 'function' && (ui.getChild('m_list') || ui.getChild('list'))));
+      var listData = page._listData || (ui && ui._listData) || page._dataList;
+      if (!Array.isArray(listData) || listData.length <= 1) return;
+
+      // 备份首次加载的原生排队数据，支持随时无损瞬时还原
+      if (!page.__sfaOriginalListData) {
+        page.__sfaOriginalListData = listData.slice();
+      }
+
+      // 1. 还原模式：直接使用原数组拷贝快速复原，零排序运算
+      if (state.sortMode === 'default') {
+        listData.length = 0;
+        for (var k = 0; k < page.__sfaOriginalListData.length; k++) {
+          listData.push(page.__sfaOriginalListData[k]);
+        }
+        if (list) {
+          if (typeof list.refreshVirtualList === 'function') list.refreshVirtualList();
+          else if (typeof list.numItems === 'number') list.numItems = listData.length;
+        }
+        return;
+      }
+
+      var mode = state.sortMode || 'power';
+      var isAsc = state.sortOrder === 'asc';
+      var subMode = mode === 'energy' ? 'power' : 'energy';
+      var len = listData.length;
+
+      // 2. 【Schwartzian 一次性提取】：遍历 O(N) 完成全部战力、精力、行军残秒的缓存
+      // 彻底消除原来在 O(N log N) 次比较中反复发生的深层对象遍历、Set 频繁申请与全图行军 marches.forEach！
+      var mapped = new Array(len);
+      for (var i = 0; i < len; i++) {
+        var it = listData[i];
+        var player = (it && it.player) || it;
+        var pEnergy = readEnemyEnergy(player);
+        var pPower = readEnemyPower(player);
+        var pMarch = 999999999;
+        if (isMarchState(player)) {
+          var remain = getPlayerMarchRemainSeconds(player);
+          pMarch = remain > 0 ? remain : 0;
+        }
+        var pName = String((player && player.name) || (it && it.name) || '');
+
+        mapped[i] = {
+          raw: it,
+          idx: i,
+          energy: pEnergy,
+          power: pPower,
+          marchTime: pMarch,
+          name: pName
+        };
+      }
+
+      // 3. 【极速纯数值比较】：纯整数字段相减，JIT 内联优化，零 GC 压力
+      mapped.sort(function (a, b) {
+        var valA = a[mode];
+        var valB = b[mode];
+        var diff = isAsc ? (valA - valB) : (valB - valA);
+        if (diff !== 0) return diff;
+
+        // 次级优先级决胜
+        if (mode === 'marchTime') {
+          var powerDiff = b.power - a.power; // 相同到达时间，大战力排前
+          if (powerDiff !== 0) return powerDiff;
+        } else {
+          var subA = a[subMode];
+          var subB = b[subMode];
+          var subDiff = isAsc ? (subA - subB) : (subB - subA);
+          if (subDiff !== 0) return subDiff;
+        }
+
+        // 保持稳定排序：数值完全相同时按初始队列索引，杜绝 UI 乱跳
+        return a.idx - b.idx;
+      });
+
+      // 4. 原地同步回原始引用容器
+      for (var j = 0; j < len; j++) {
+        listData[j] = mapped[j].raw;
+      }
+
+      // 5. 虚拟列表增量刷新（仅重绘视口内条目）
+      if (list) {
+        if (typeof list.refreshVirtualList === 'function') list.refreshVirtualList();
+        else if (typeof list.numItems === 'number') list.numItems = listData.length;
+      }
+    } catch (e) {
+      logWarn('部队排序计算异常:', e && e.message || e);
+    } finally {
+      state.isSorting = false;
+    }
+  }
+
   function updateItemMarchCountdown(item, player) {
     if (!item) return;
     var countdownNode = item.__saltQueueMarchRemainText;
@@ -1482,7 +3249,7 @@
     }
     var remainSec = getPlayerMarchRemainSeconds(player);
     if (!countdownNode) {
-      countdownNode = _0x5a172a(item, "__saltQueueMarchRemainText", "saltQueueMarchRemain", false);
+      countdownNode = ensureTextField(item, '__saltQueueMarchRemainText', 'saltQueueMarchRemain', false);
     }
     if (!countdownNode) return;
     countdownNode.text = remainSec > 0 ? (remainSec + 's到达') : '即将到达';
@@ -1494,14 +3261,13 @@
     countdownNode.visible = true;
     countdownNode.sortingOrder = 9996;
 
-    // 严禁遮挡 m_btnFight (出战按钮) 和锁定按钮！将其定位在状态文本右侧、按钮左侧
     var statusNode = findStatusTextNode(item);
     var yPos = statusNode ? (Number(statusNode.y) || 28) : 28;
     var countdownW = 76;
     var lockBtn = item.__saltQueueLockButton;
     var fightBtn = item.m_btnFight;
     var rightLimit = lockBtn && lockBtn.visible ? (Number(lockBtn.x) || 270) : (fightBtn ? (Number(fightBtn.x) || 400) : 400);
-    var startX = statusNode ? (Number(statusNode.x) || 120) + _0x26058d(statusNode) + 8 : 180;
+    var startX = statusNode ? (Number(statusNode.x) || 120) + estimateTextWidth(statusNode) + 8 : 180;
     var targetX = Math.min(startX, rightLimit - countdownW - 4);
     countdownNode.align = 'left';
     setNodeSize(countdownNode, countdownW, 20);
@@ -1530,2798 +3296,1121 @@
     }, 1000);
   }
 
-  function logInfo() {
-    var _0x1ebd60 = Array["prototype"]["slice"]["call"](arguments);
-    _0x1ebd60["unshift"]("[黑鬼盐场锁头]"),
-      console['log']['apply'](console,
-        _0x1ebd60);
-  }
-  function logWarn() {
-    var _0x424c0c = Array["prototype"]["slice"]['call'](arguments);
-    _0x424c0c['unshift']("[SaltQueueLocker]"),
-      console['warn']['apply'](console,
-        _0x424c0c);
-  }
-  function clearRecognitionCaches() {
-    state["teamCache"]['clear'](),
-      state["formationCache"]["clear"](),
-      state["imagePending"]['clear']();
-    state["requestCooldown"]['clear']();
-  }
-  function getServerTimeNow() {
-    try {
-      var _0x3c8055 = gameRequire('DateUtil'),
-        _0x2f3d1f = _0x3c8055 && (_0x3c8055['default'] || _0x3c8055),
-        _0x24af8d = _0x2f3d1f && Number(_0x2f3d1f['serverTime']);
-      if (isFinite(_0x24af8d) && _0x24af8d > 0) return _0x24af8d;
-    }
-    catch (_0x3b0e5b) {
-    }
-    return Date['now']();
-  }
-  function getCountdownRoot() {
-    var _0x1f4b86 = getFgui(),
-      _0x513fd4 = _0x1f4b86 && _0x1f4b86['GRoot'];
-    return _0x513fd4 && (_0x513fd4['inst'] || _0x513fd4['getInst'] && _0x513fd4['getInst']()) || null;
-  }
-  function hideMarchCountdown() {
-    if (state['countdownText']) state['countdownText']['visible'] = false;
-    state['countdownLastSecond'] = -1;
-  }
-  function showCountdownMessage(_0x24a7cc,
-    _0x3d0e2e) {
-    var _0x4d0fd4 = getCountdownRoot(),
-      _0x2fe41e;
-    if (_0x3d0e2e === state['countdownLastSecond'] && state['countdownText'] && state['countdownText']['text'] === _0x24a7cc) return;
-    state['countdownLastSecond'] = _0x3d0e2e;
-    if (!state['countdownText'] && _0x4d0fd4 && getFgui()['GTextField']) try {
-      state['countdownText'] = new (getFgui()['GTextField'])(),
-        state['countdownText']['name'] = 'saltQueueMarchCountdown',
-        state['countdownText']['touchable'] = false,
-        state['countdownText']['fontSize'] = 17,
-        state['countdownText']['color'] = '#ffe3a1',
-        state['countdownText']['stroke'] = 2,
-        state['countdownText']['strokeColor'] = '#3b1e12',
-        state['countdownText']['singleLine'] = true,
-        _0x502487(state['countdownText'], 280, 28),
-        _0x15c23b(state['countdownText'], 24, 24),
-        _0x4d0fd4['addChild'](state['countdownText']);
-    }
-      catch (_0x24d3cb) {
-      }
-    _0x2fe41e = state['countdownText'];
-    if (_0x2fe41e) _0x2fe41e['text'] = _0x24a7cc,
-      _0x2fe41e['visible'] = true;
-    logInfo(_0x24a7cc);
-  }
-  function updateMarchCountdown(_0x2b4fc8,
-    _0x4eb1bb) {
-    var _0x1b8d68,
-      _0x3d0e2e,
-      _0x5a8d5d,
-      _0xendTime;
-    if (!_0x2b4fc8 || !isMarchState(_0x2b4fc8) || !Number(_0x2b4fc8['endMarchTime'])) return hideMarchCountdown();
-    _0xendTime = normalizeTimestamp(_0x2b4fc8['endMarchTime']);
-    _0x1b8d68 = Math.max(0, _0xendTime - getServerTimeNow()),
-      _0x3d0e2e = Math.ceil(_0x1b8d68 / 1000),
-      _0x5a8d5d = _0x4eb1bb ? '返回原建筑' : '前往锁定建筑',
-      showCountdownMessage(_0x5a8d5d + '：' + _0x3d0e2e + '秒', _0x3d0e2e);
-  }
-  function base64ToBytes(_0xb8dd4d) {
-    var _0x6aa5c0 = window['atob'] || (typeof atob === "function" ? atob : null),
-      _0x521385,
-      _0x5c3a59,
-      _0x2d794b;
-    if (!_0x6aa5c0 || !_0xb8dd4d) return null;
-    _0x521385 = _0x6aa5c0(_0xb8dd4d),
-      _0x5c3a59 = new Uint8Array(_0x521385["length"]);
-    for (_0x2d794b = 0;
-      _0x2d794b < _0x521385["length"];
-      _0x2d794b++)_0x5c3a59[_0x2d794b] = _0x521385["charCodeAt"](_0x2d794b);
-    return _0x5c3a59;
-  }
-  function getAvatarSignatureTemplates() {
-    if (avatarSignatureTemplates) return avatarSignatureTemplates;
-    return avatarSignatureTemplates = EMBEDDED_AVATAR_SIGNATURES["map"](function (_0xa707c6) {
-      return {
-        'heroId': Number(_0xa707c6[0]),
-        'heroName': String(_0xa707c6[1]),
-        'variant': String(_0xa707c6[2]),
-        'signature': base64ToBytes(_0xa707c6[3])
-      };
-    })['filter'](function (_0x3865a8) {
-      return _0x3865a8['heroId'] >= 0 && _0x3865a8["signature"] && _0x3865a8["signature"]["length"] > 0;
-    }),
-      avatarSignatureTemplates;
-  }
-  function averageSignatureDistance(_0x1a1759,
-    _0x4c6571) {
-    var _0x30a0bd = 0,
-      _0x518d81;
-    if (!_0x1a1759 || !_0x4c6571 || _0x1a1759["length"] !== _0x4c6571['length'] || !_0x1a1759["length"]) return Infinity;
-    for (_0x518d81 = 0;
-      _0x518d81 < _0x1a1759["length"];
-      _0x518d81++)_0x30a0bd += Math['abs'](_0x1a1759[_0x518d81] - _0x4c6571[_0x518d81]);
-    return _0x30a0bd / _0x1a1759["length"];
-  }
-  function findBestAvatarTemplateMatch(_0x3d2ec7) {
-    var _0xd14e5f = {
-    },
-      _0x9a3cd1;
-    getAvatarSignatureTemplates()["forEach"](function (_0x2caf25) {
-      var _0x1f373e = averageSignatureDistance(_0x3d2ec7,
-        _0x2caf25["signature"]),
-        _0x4e7db3 = _0x2caf25['heroId'] + ':' + _0x2caf25["heroName"],
-        _0x5bacb8 = _0xd14e5f[_0x4e7db3];
-      (!_0x5bacb8 || _0x1f373e < _0x5bacb8['distance']) && (_0xd14e5f[_0x4e7db3] = {
-        'heroId': _0x2caf25['heroId'],
-        'heroName': _0x2caf25['heroName'],
-        'variant': _0x2caf25['variant'],
-        'distance': _0x1f373e
-      });
-    }),
-      _0x9a3cd1 = Object['keys'](_0xd14e5f)["map"](function (_0x4781c0) {
-        return _0xd14e5f[_0x4781c0];
-      })['sort'](function (_0x48c09a,
-        _0x3c2400) {
-        return _0x48c09a['distance'] - _0x3c2400["distance"];
-      });
-    if (!_0x9a3cd1['length']) return null;
-    return _0x9a3cd1[0]["margin"] = _0x9a3cd1['length'] > 1 ? _0x9a3cd1[1]['distance'] - _0x9a3cd1[0]['distance'] : Infinity,
-      _0x9a3cd1[0]['accepted'] = _0x9a3cd1[0]['heroId'] > 0 && _0x9a3cd1[0]['distance'] <= AVATAR_DISTANCE_THRESHOLD && _0x9a3cd1[0]["margin"] >= AVATAR_MARGIN_THRESHOLD,
-      _0x9a3cd1[0]["second"] = _0x9a3cd1[1] || null,
-      _0x9a3cd1[0];
-  }
-  function rasterizeAvatarSignature(_0x5f5b38) {
-    return new Promise(function (_0x3fce08,
-      _0xa0e783) {
-      var _0x3d1363 = window['Image'] || (typeof Image !== "undefined" ? Image : null),
-        _0x21ccb4;
-      if (!_0x3d1363 || typeof document === "undefined" || typeof document["createElement"] !== 'function') {
-        _0xa0e783(new Error("当前环境不支持 Canvas 图片识别"));
-        return;
-      }
-      _0x21ccb4 = new _0x3d1363(),
-        _0x21ccb4['onload'] = function () {
-          try {
-            var _0x49f324 = document["createElement"]('canvas'),
-              _0x59cd1c,
-              _0x422d9e,
-              _0x19401b = new Uint8Array(AVATAR_SIGNATURE_WIDTH * AVATAR_SIGNATURE_HEIGHT * 3),
-              _0x1d4d21,
-              _0x147baa = 0;
-            _0x49f324['width'] = AVATAR_SIGNATURE_WIDTH,
-              _0x49f324['height'] = AVATAR_SIGNATURE_HEIGHT,
-              _0x59cd1c = _0x49f324["getContext"]('2d',
-                {
-                  'willReadFrequently': true
-                }),
-              _0x59cd1c["fillStyle"] = "rgb(105,77,61)",
-              _0x59cd1c["fillRect"](0,
-                0,
-                _0x49f324['width'],
-                _0x49f324['height']),
-              _0x59cd1c["drawImage"](_0x21ccb4,
-                0,
-                0,
-                _0x49f324['width'],
-                _0x49f324["height"]),
-              _0x422d9e = _0x59cd1c["getImageData"](0,
-                0,
-                _0x49f324['width'],
-                _0x49f324['height'])['data'];
-            for (_0x1d4d21 = 0;
-              _0x1d4d21 < _0x422d9e['length'];
-              _0x1d4d21 += 4) {
-              _0x19401b[_0x147baa++] = _0x422d9e[_0x1d4d21] >> 3,
-                _0x19401b[_0x147baa++] = _0x422d9e[_0x1d4d21 + 1] >> 3,
-                _0x19401b[_0x147baa++] = _0x422d9e[_0x1d4d21 + 2] >> 3;
-            }
-            _0x3fce08(_0x19401b);
-          }
-          catch (_0x38bda1) {
-            _0xa0e783(_0x38bda1);
-          }
-        },
-        _0x21ccb4['onerror'] = function () {
-          _0xa0e783(new Error("头像 PNG 解码失败"));
-        };
-        var srcStr = String(_0x5f5b38 || '');
-        if (srcStr && !srcStr.startsWith('data:') && !srcStr.startsWith('http')) {
-          srcStr = 'data:image/png;base64,' + srcStr;
-        }
-        _0x21ccb4['src'] = srcStr;
-    });
-  }
-  function matchAvatarImage(_0x2df8c6) {
-    return rasterizeAvatarSignature(_0x2df8c6)['then'](function (_0x4de57b) {
-      return findBestAvatarTemplateMatch(_0x4de57b);
-    });
-  }
-  function hasGameRequire() {
-    return typeof window["__require"] === 'function';
-  }
-  function gameRequire(_0x46e804) {
-    return window["__require"](_0x46e804);
-  }
-  function getFgui() {
-    if (typeof fgui !== "undefined") return fgui;
-    return window['fgui'] || null;
-  }
-  function getLegionWarModule() {
-    if (!hasGameRequire()) return null;
-    try {
-      var _0x56f644 = gameRequire('Configs'),
-        _0x42cf3f = gameRequire('ModuleManager');
-      if (!_0x56f644 || !_0x42cf3f || typeof _0x42cf3f["GET_MODULE"] !== "function") return null;
-      return _0x42cf3f["GET_MODULE"](_0x56f644["ModuleType"]["LEGION_WAR"]);
-    }
-    catch (_0x5dfa26) {
-      return null;
-    }
-  }
-  function firstPositiveNumber(_0xb52d5e) {
-    var _0x58a88b,
-      _0x525f4d;
-    for (_0x58a88b = 0;
-      _0x58a88b < _0xb52d5e['length'];
-      _0x58a88b++) {
-      _0x525f4d = Number(_0xb52d5e[_0x58a88b]);
-      if (isFinite(_0x525f4d) && _0x525f4d > 0) return _0x525f4d;
-    }
-    return 0;
-  }
-  function getServerData(_0x2fbeb3) {
-    if (!_0x2fbeb3) return null;
-    try {
-      return _0x2fbeb3["_serverData"] || _0x2fbeb3["serverData"] || null;
-    }
-    catch (_0xd0520d) {
-      return null;
-    }
-  }
-  function getRoleCodeId(_0xea72b0) {
-    var _0x3ceb4e;
-    if (!_0xea72b0) return 0;
-    return _0x3ceb4e = getServerData(_0xea72b0),
-      firstPositiveNumber([_0xea72b0['id'],
-      _0xea72b0['roleId'],
-      _0xea72b0["roleCodeId"],
-      _0x3ceb4e && _0x3ceb4e['codeIdV2'],
-      _0xea72b0['key'],
-      _0xea72b0["team"] && _0xea72b0["team"]['leaderId'],
-      _0xea72b0["team"] && _0xea72b0["team"]["leaderRoleId"],
-      _0xea72b0['codeIdV2'],
-      _0xea72b0['codeId'],
-      _0xea72b0["cId"],
-      _0xea72b0["team"] && _0xea72b0['team']["leaderCodeIdV2"],
-      _0xea72b0["team"] && _0xea72b0['team']["leaderCodeId"],
-      _0xea72b0["hasTeam"] && _0xea72b0["team"] && _0xea72b0['team']['leaderId']]);
-  }
-  function getBattlefield() {
-    var _0x3e4b04 = getLegionWarModule();
-    if (!_0x3e4b04) return null;
-    return _0x3e4b04["battlefield"] || _0x3e4b04["_battlefield"] || _0x3e4b04['data'] && _0x3e4b04['data']["battlefield"] || null;
-  }
-  function getBattlefieldId() {
-    var _0x5c2b5a = getLegionWarModule(),
-      _0x6266e = getBattlefield();
-    if (!_0x5c2b5a) return 'unknown';
-    return String(_0x5c2b5a["battlefieldId"] || _0x5c2b5a["_battlefieldId"] || _0x6266e && _0x6266e['id'] || _0x5c2b5a["data"] && _0x5c2b5a['data']["battlefieldId"] || 'unknown');
-  }
-  function getPlayerName(_0x490dbb) {
-    return _0x490dbb && (_0x490dbb['name'] || _0x490dbb["nickName"] || _0x490dbb['roleName'] || _0x490dbb["nickname"]) || '';
-  }
-  function isSelfPlayer(_0xa26bbd) {
-    var _0x36f3e = getRoleCodeId(_0xa26bbd),
-      _0x2ffcb3 = getLegionWarModule(),
-      _0x2a4c79 = getBattlefield(),
-      _0x59a4c2 = _0x2a4c79 && (_0x2a4c79["self"] || _0x2a4c79["selfRole"] || _0x2a4c79["role"]),
-      _0x48e8a4 = firstPositiveNumber([_0x59a4c2 && _0x59a4c2['id'],
-      _0x59a4c2 && _0x59a4c2["roleId"],
-      _0x59a4c2 && _0x59a4c2["roleCodeId"],
-      _0x2ffcb3 && _0x2ffcb3["selfCodeId"],
-      _0x2ffcb3 && _0x2ffcb3["_selfCodeId"],
-      _0x2ffcb3 && _0x2ffcb3["roleId"]]);
-    if (!_0x36f3e || !_0x2ffcb3) return false;
-    return _0x36f3e === _0x48e8a4;
-  }
-  function isPlayerLike(_0x5158) {
-    return !!(_0x5158 && typeof _0x5158 === 'object' && (_0x5158['id'] || _0x5158['roleId'] || _0x5158["roleCodeId"] || _0x5158['key'] || _0x5158["codeId"] || _0x5158['codeIdV2'] || _0x5158['cId'] || _0x5158['name'] || _0x5158['nickName'] || _0x5158['roleName']));
-  }
-  function getPlayerCacheKey(_0x2a3f4c) {
-    var _0x4cb629 = getRoleCodeId(_0x2a3f4c);
-    return _0x4cb629 ? getBattlefieldId() + ':' + _0x4cb629 : '';
-  }
-  function getPlayerStateKey(_0x830bf0) {
-    if (!_0x830bf0) return '';
-    return [_0x830bf0['state'],
-    _0x830bf0["isDead"] ? 1 : 0,
-    Number(_0x830bf0["dieTime"]) || 0,
-    _0x830bf0["teamState"],
-    _0x830bf0['hasTeam'] ? 1 : 0,
-    Number(_0x830bf0['strength']) || 0,
-    Number(_0x830bf0['dC']) || 0,
-    Number(_0x830bf0['point']) || 0,
-    Number(_0x830bf0["reviveTime"]) || 0]["join"]('|');
-  }
-  function _0x24a98a(_0x272555,
-    _0x30cb40) {
-    if (!_0x272555) return null;
-    if (typeof _0x272555["get"] === "function") {
-      if (!_0x272555["has"] || _0x272555['has'](_0x30cb40)) return _0x272555['get'](_0x30cb40);
-      if (_0x272555['has'](String(_0x30cb40))) return _0x272555["get"](String(_0x30cb40));
-      return null;
-    }
-    if (Object["prototype"]["hasOwnProperty"]['call'](_0x272555,
-      _0x30cb40)) return _0x272555[_0x30cb40];
-    if (Object["prototype"]["hasOwnProperty"]['call'](_0x272555,
-      String(_0x30cb40))) return _0x272555[String(_0x30cb40)];
-    return null;
-  }
-  function _0x38e167(_0xce08cc,
-    _0x5845fd) {
-    if (!_0xce08cc || typeof _0x5845fd !== "function") return;
-    if (typeof _0xce08cc["forEach"] === 'function') {
-      _0xce08cc["forEach"](function (_0x2e9101,
-        _0x4a4944) {
-        _0x5845fd(_0x2e9101,
-          _0x4a4944);
-      });
+  function refreshItem(item, player) {
+    if (state.destroyed || !item) return;
+    if (!isPlayerLike(player)) {
+      hideSaltQueueOverlay(item);
+      item.__saltQueuePlayer = null;
       return;
     }
-    typeof _0xce08cc === "object" && Object['keys'](_0xce08cc)["forEach"](function (_0x4e2027) {
-      _0x5845fd(_0xce08cc[_0x4e2027],
-        _0x4e2027);
-    });
-  }
-  function _0x3fd4ff(_0x2a32ec) {
-    var _0x24579a = {
-    };
-    if (!_0x2a32ec || typeof _0x2a32ec !== "object") return _0x24579a;
-    return Object['keys'](_0x2a32ec)['forEach'](function (_0x4b1bd1) {
-      _0x24579a[_0x4b1bd1] = _0x2a32ec[_0x4b1bd1];
-    }),
-      _0x24579a;
-  }
-  function _0x5b62e9(_0x5bfca5) {
-    if (_0x5bfca5 === null || _0x5bfca5 === undefined || _0x5bfca5 === '') return -1;
-    var _0x3be229 = Number(_0x5bfca5);
-    return isFinite(_0x3be229) && _0x3be229 >= 0 && _0x3be229 < 5 && Math['floor'](_0x3be229) === _0x3be229 ? _0x3be229 : -1;
-  }
-  function _0xde31f3(_0x3509c4,
-    _0x399859,
-    _0x7ea516) {
-    var _0x1156db = [_0x3509c4 && _0x3509c4["battleTeamSlot"],
-    _0x3509c4 && _0x3509c4["slot"],
-    _0x3509c4 && _0x3509c4["index"],
-      _0x399859,
-      _0x7ea516],
-      _0x576979,
-      _0x581b4a;
-    for (_0x576979 = 0;
-      _0x576979 < _0x1156db['length'];
-      _0x576979 += 1) {
-      _0x581b4a = _0x5b62e9(_0x1156db[_0x576979]);
-      if (_0x581b4a >= 0) return _0x581b4a;
+
+    item.__saltQueuePlayer = player;
+    ensureLockControl(item);
+    updateItemMarchCountdown(item, player);
+    renderPlayerRoleId(item, player);
+
+    var cached = getCachedTeamSummary(player);
+    if (cached) {
+      renderTeamSummary(item, player, cached);
+      renderTeamRemaining(item, cached);
+    } else {
+      renderTeamSummary(item, player, null);
+      renderTeamRemaining(item, null);
     }
-    return -1;
-  }
-  function listParticipantIdentities() {
-    var _0x51ff40 = getBattlefield(),
-      _0x184482 = _0x51ff40 && (_0x51ff40["players"] || _0x51ff40['roles']),
-      _0x5ec78e = [],
-      _0x470ebe = {
-      };
-    function _0x28a348(_0x142dc2,
-      _0x3575e1) {
-      var _0x5d0859 = getRoleCodeId(_0x142dc2) || firstPositiveNumber([_0x3575e1]),
-        _0x3b003f;
-      if (!_0x5d0859 || _0x470ebe[_0x5d0859]) return;
-      _0x470ebe[_0x5d0859] = true,
-        _0x3b003f = state["teamCache"]['get'](getBattlefieldId() + ':' + _0x5d0859) || null,
-        _0x5ec78e["push"]({
-          'roleCodeId': _0x5d0859,
-          'name': getPlayerName(_0x142dc2),
-          'strength': _0x142dc2 && _0x142dc2['strength'],
-          'state': _0x142dc2 && _0x142dc2['state'],
-          'formation': _0x3b003f && _0x3b003f['text'] || ''
+    updateLockControl(item);
+
+    if (!cached) {
+      window.setTimeout(function () {
+        if (state.destroyed || item.__saltQueuePlayer !== player) return;
+        requestTeamSummary(player, function (summary) {
+          if (state.destroyed || item.__saltQueuePlayer !== player) return;
+          if (summary) {
+            renderTeamSummary(item, player, summary);
+            renderTeamRemaining(item, summary);
+          }
         });
-    }
-    if (_0x184482 && typeof _0x184482['forEach'] === 'function') _0x184482["forEach"](function (_0x1836ba,
-      _0x47dd9a) {
-      _0x28a348(_0x1836ba,
-        _0x47dd9a);
-    });
-    else _0x184482 && typeof _0x184482 === 'object' && Object['keys'](_0x184482)['forEach'](function (_0x14d4d0) {
-      _0x28a348(_0x184482[_0x14d4d0],
-        _0x14d4d0);
-    });
-    return _0x5ec78e["sort"](function (_0x401544,
-      _0xfca31d) {
-      return _0x401544["roleCodeId"] - _0xfca31d["roleCodeId"];
-    });
-  }
-  function normalizePngDataUrl(_0x58dbd2) {
-    if (!_0x58dbd2) return '';
-    return String(_0x58dbd2)['replace'](/^data:image\/png;base64,/,
-      '');
-  }
-  function _0x2ac49c(_0x51e03f) {
-    var _0x5344a4 = [null,
-      null,
-      null,
-      null,
-      null],
-      _0x231655 = [],
-      _0x165f42 = 0;
-    if (!_0x51e03f) return [];
-    return _0x38e167(_0x51e03f,
-      function (_0x1d43eb,
-        _0x33d5db) {
-        var _0x441da6,
-          _0x189ef2;
-        if (!_0x1d43eb || typeof _0x1d43eb !== 'object' || _0x165f42 >= 5) return;
-        _0x441da6 = _0x3fd4ff(_0x1d43eb),
-          _0x189ef2 = _0xde31f3(_0x441da6,
-            _0x33d5db,
-            -1),
-          _0x441da6["__saltTeamKey"] = _0x33d5db,
-          _0x441da6["__saltTeamSlot"] = _0x189ef2;
-        if (_0x189ef2 >= 0 && !_0x5344a4[_0x189ef2]) _0x5344a4[_0x189ef2] = _0x441da6;
-        else _0x231655['push'](_0x441da6);
-        _0x165f42 += 1;
-      }),
-      _0x231655["forEach"](function (_0x4a0a66) {
-        var _0x5b05ef;
-        for (_0x5b05ef = 0;
-          _0x5b05ef < 5;
-          _0x5b05ef += 1) {
-          if (!_0x5344a4[_0x5b05ef]) {
-            _0x4a0a66["__saltTeamSlot"] = _0x5b05ef,
-              _0x5344a4[_0x5b05ef] = _0x4a0a66;
-            break;
-          }
-        }
-      }),
-      _0x5344a4['filter'](function (_0x51fa70) {
-        return !!_0x51fa70;
-      });
-  }
-  function _0x4ec89a(_0x56d930,
-    _0x1ecfe7) {
-    var _0x13fee6 = [],
-      _0x3c8fa1 = {
-      };
-    return (_0x56d930 || [])['slice'](0,
-      5)['forEach'](function (_0x4639d7,
-        _0x3798e1) {
-        var _0x169739 = _0x3fd4ff(_0x4639d7),
-          _0x1b6211 = _0x4639d7 && _0x4639d7["__saltTeamKey"],
-          _0x42ca43 = _0xde31f3(_0x169739,
-            _0x1b6211,
-            _0x3798e1),
-          _0x320402 = normalizePngDataUrl(_0x24a98a(_0x1ecfe7,
-            _0x1b6211) || _0x24a98a(_0x1ecfe7,
-              _0x42ca43));
-        if (_0x42ca43 >= 0 && _0x3c8fa1[_0x42ca43]) return;
-        if (_0x42ca43 >= 0) _0x3c8fa1[_0x42ca43] = true;
-        _0x169739["__saltTeamKey"] = _0x1b6211,
-          _0x169739["__saltTeamSlot"] = _0x42ca43;
-        if (_0x320402) _0x169739['imgName'] = _0x320402;
-        _0x320402 && !_0x169739['heroName'] && (_0x169739['heroName'] = '未知头像');
-        if (_0x169739['curHp'] === undefined && _0x169739['hp'] === undefined) _0x169739['curHp'] = 1;
-        _0x13fee6['push'](_0x169739);
-      }),
-      _0x13fee6;
-  }
-  function _0x11e078(_0x4d0331) {
-    var _0x128cf1 = null;
-    if (!_0x4d0331) return null;
-    if (Array["isArray"](_0x4d0331["formation"])) _0x128cf1 = _0x4d0331["formation"];
-    else {
-      if (Array["isArray"](_0x4d0331['fighters'])) _0x128cf1 = _0x4d0331['fighters'];
-      else {
-        if (Array['isArray'](_0x4d0331["heroes"])) _0x128cf1 = _0x4d0331["heroes"];
-        else {
-          if (_0x4d0331['teamInfo']) _0x128cf1 = _0x4ec89a(_0x2ac49c(_0x4d0331['teamInfo']),
-            _0x4d0331["teamImgInfo"]);
-          else {
-            if (_0x4d0331["battleTeam"]) _0x128cf1 = _0x2ac49c(_0x4d0331["battleTeam"]);
-          }
-        }
-      }
-    }
-    if (!_0x128cf1 || !_0x128cf1['length']) return null;
-    return _0x128cf1["slice"](0,
-      5)['map'](function (_0x4672ca,
-        _0x2e9715) {
-        var _0x3750cb = normalizePngDataUrl(_0x4672ca && (_0x4672ca['imgName'] || _0x4672ca['teamImg'] || _0x4672ca["imgHash"] || _0x4672ca["imageHash"])),
-          _0x5cbe76 = Number(_0x4672ca && (_0x4672ca['heroId'] || _0x4672ca['confId'] || _0x4672ca["heroConfId"] || _0x4672ca['id'])) || 0;
-        return {
-          'heroId': _0x5cbe76,
-          'heroName': _0x4672ca && (_0x4672ca['heroName'] || _0x4672ca["name"]) || HERO_NAME_BY_ID[_0x5cbe76] || (_0x3750cb ? "未知头像" : ''),
-          'imgName': _0x3750cb,
-          'battleTeamSlot': _0xde31f3(_0x4672ca,
-            null,
-            _0x2e9715),
-          'curHp': _0x4672ca && _0x4672ca['curHp'] !== undefined ? _0x4672ca['curHp'] : _0x4672ca && _0x4672ca['hp'] !== undefined ? _0x4672ca['hp'] : 1,
-          'useSkin': _0x4672ca && _0x4672ca['useSkin']
-        };
-      })['filter'](function (_0x13420e) {
-        return _0x13420e['heroId'] > 0 || !!_0x13420e['imgName'] || !!_0x13420e['heroName'];
-      });
-  }
-  function resolveHeroName(_0x3888af,
-    _0x2cbf68) {
-    if (!_0x3888af) return '';
-    if (_0x3888af['heroName']) return String(_0x3888af['heroName']);
-    if (!_0x3888af["heroId"]) return '';
-    if (HERO_NAME_BY_ID[_0x3888af['heroId']]) return HERO_NAME_BY_ID[_0x3888af['heroId']];
-    try {
-      var _0x4902de = gameRequire('HeroDataView')["HeroDataView"];
-      if (_0x4902de && _0x4902de["getRealName"]) {
-        var _0x501591 = _0x4902de["getRealName"](_0x3888af,
-          _0x3888af["useSkin"],
-          !!(_0x2cbf68 && isSelfPlayer(_0x2cbf68)));
-        if (_0x501591) return String(_0x501591);
-      }
-    }
-    catch (_0x137d74) {
-    }
-    try {
-      var _0x16f262 = gameRequire('Configs'),
-        _0x5ae620 = gameRequire('LanguageExt'),
-        _0x4366ee = _0x16f262["HeroConf"] && _0x16f262["HeroConf"]["getById"](_0x3888af['heroId']),
-        _0x4c6226 = _0x4366ee && (_0x4366ee['nickName'] || _0x4366ee['name']);
-      if (_0x4c6226 && _0x5ae620 && _0x5ae620["GET_CONTENT"]) return String(_0x5ae620["GET_CONTENT"](_0x4c6226));
-      return _0x4c6226 ? String(_0x4c6226) : String(_0x3888af['heroId']);
-    }
-    catch (_0x14dd0e) {
-      return String(_0x3888af["heroId"]);
+      }, 120);
     }
   }
-  function containsText(_0x3141fe,
-    _0x23274d) {
-    return _0x3141fe['some'](function (_0x2ab433) {
-      return String(_0x2ab433 || '')['indexOf'](_0x23274d) >= 0;
-    });
-  }
-  function classifyFormation(_0x15a0d7,
-    _0x10fe8e,
-    _0x5b785f,
-    _0x5d543e) {
-    var _0x3dbb7b;
-    for (_0x3dbb7b = 0;
-      _0x3dbb7b < FORMATION_PATTERNS['length'];
-      _0x3dbb7b++) {
-      var _0xedecb7 = FORMATION_PATTERNS[_0x3dbb7b],
-        _0x52eec4 = _0xedecb7["heroes"]['every'](function (_0x11d946) {
-          return containsText(_0x15a0d7,
-            _0x11d946);
-        });
-      if (_0x52eec4) return _0xedecb7["label"];
-    }
-    if (_0x5b785f > 0 && _0x10fe8e <= 0) return '空阵';
-    if (_0x5b785f > 0) return '其他';
-    return '未知';
-  }
-  function buildRosterFingerprint(_0x26cf9f) {
-    var _0x3b57a0 = {
-    };
-    (_0x26cf9f || [])['forEach'](function (_0x467851,
-      _0x10e8ba) {
-      var _0x3f7aad;
-      if (!_0x467851) return;
-      _0x3f7aad = _0xde31f3(_0x467851,
-        _0x467851["__saltTeamKey"],
-        _0x10e8ba);
-      if (_0x3f7aad < 0 || _0x3b57a0[_0x3f7aad]) return;
-      _0x3b57a0[_0x3f7aad] = [_0x3f7aad,
-        Number(_0x467851["heroId"]) || 0,
-        Number(_0x467851['level']) || 0,
-        Number(_0x467851['order']) || 0,
-        Number(_0x467851['star']) || 0,
-        Number(_0x467851['color']) || 0,
-        Number(_0x467851["power"]) || 0,
-        Number(_0x467851["maxHp"] || _0x467851['hp']) || 0,
-        Number(_0x467851['useSkin']) || 0,
-        normalizePngDataUrl(_0x467851['imgName'])["toLowerCase"]()]['join'](':');
-    });
-    if (Object["keys"](_0x3b57a0)['length'] !== 5) return '';
-    return [0,
-      1,
-      2,
-      3,
-      4]['map'](function (_0x2d02f8) {
-        return _0x3b57a0[_0x2d02f8];
-      })['join']('|');
-  }
-  function buildTeamSummary(_0x3d5d9f,
-    _0x2a62b5,
-    _0x4a628b) {
-    var _0x56dc90 = [],
-      _0x6b9239 = [],
-      _0x4cddda = 0,
-      _0x124b14 = {
-      };
-    _0x2a62b5 = _0x2a62b5 || [],
-      _0x2a62b5['forEach'](function (_0x2923af,
-        _0x65fcf6) {
-        var _0x1d5cfc,
-          _0x177f6a;
-        if (!_0x2923af) return;
-        _0x177f6a = _0xde31f3(_0x2923af,
-          _0x2923af["__saltTeamKey"],
-          _0x65fcf6);
-        if (_0x177f6a >= 0 && _0x124b14[_0x177f6a]) return;
-        if (_0x177f6a >= 0) _0x124b14[_0x177f6a] = true;
-        _0x1d5cfc = resolveHeroName(_0x2923af,
-          _0x3d5d9f);
-        if (_0x2923af["heroId"]) _0x6b9239['push'](_0x2923af['heroId']);
-        if (_0x1d5cfc) _0x56dc90['push'](_0x1d5cfc);
-        var _0x4c68dd = _0x2923af['curHp'],
-          _0x5a4fdb = _0x2923af['hp'],
-          _0x40f686 = false;
-        if (_0x4c68dd !== undefined && _0x4c68dd !== null && _0x4c68dd !== '') _0x40f686 = isFinite(Number(_0x4c68dd)) && Number(_0x4c68dd) === 0;
-        else _0x5a4fdb !== undefined && _0x5a4fdb !== null && _0x5a4fdb !== '' && (_0x40f686 = isFinite(Number(_0x5a4fdb)) && Number(_0x5a4fdb) === 0);
-        if (!_0x40f686) _0x4cddda++;
-      });
-    var _0x2dd114 = 5,
-      _0x3bbf35 = _0x4a628b && _0x4a628b['label'] || classifyFormation(_0x56dc90,
-        _0x4cddda,
-        _0x2dd114,
-        _0x3d5d9f && _0x3d5d9f["formationType"]);
-    if (!_0x56dc90['length'] && _0x4a628b && _0x4a628b["heroNames"]) _0x56dc90 = _0x4a628b["heroNames"]["slice"]();
-    if (!_0x6b9239['length'] && _0x4a628b && _0x4a628b['heroIds']) _0x6b9239 = _0x4a628b["heroIds"]['slice']();
-    return {
-      'label': _0x3bbf35,
-      'alive': _0x4cddda,
-      'total': _0x2dd114,
-      'heroIds': _0x6b9239,
-      'heroNames': _0x56dc90,
-      'rosterFingerprint': buildRosterFingerprint(_0x2a62b5),
-      'remainingText': _0x4cddda + '/' + _0x2dd114,
-      'text': _0x3bbf35 + _0x4cddda + '/' + _0x2dd114
-    };
-  }
-  function unwrapTeamInfoResponse(_0x3131aa) {
-    if (!_0x3131aa) return null;
-    if (_0x3131aa['code']) return null;
-    if (_0x3131aa['data'] && _0x3131aa["data"]['code']) return null;
-    if (typeof _0x3131aa['getData'] === "function") try {
-      var _0x468efc = gameRequire('data-index');
-      return _0x3131aa['getData'](new _0x468efc['War_GetT' + ("eamInfoR") + 'esp']());
-    }
-      catch (_0x3695cc) {
-        try {
-          return _0x3131aa['getData']();
-        }
-        catch (_0x286f89) {
-          return null;
-        }
-      }
-    if (_0x3131aa['data'] && typeof _0x3131aa['data']["getData"] === 'function') try {
-      var _0x3d20d4 = gameRequire('data-index');
-      return _0x3131aa['data']['getData'](new _0x3d20d4["War_GetTeamInfoR" + ("esp")]());
-    }
-      catch (_0x47a677) {
-        try {
-          return _0x3131aa["data"]['getData']();
-        }
-        catch (_0x3af5a6) {
-          return null;
-        }
-      }
-    if (_0x3131aa['body'] && (_0x3131aa["body"]["teamInfo"] || _0x3131aa['body']["teamImgInfo"])) return _0x3131aa["body"];
-    return _0x3131aa["data"] || _0x3131aa;
-  }
-  function parseTeamResponse(_0x622eef) {
-    var _0x1af795 = unwrapTeamInfoResponse(_0x622eef);
-    if (!_0x1af795 || !_0x1af795['teamInfo']) return null;
-    return _0x4ec89a(_0x2ac49c(_0x1af795['teamInfo']),
-      _0x1af795["teamImgInfo"]);
-  }
-  function unwrapTeamImgInfoResponse(_0x5b6ecd) {
-    if (!_0x5b6ecd) return null;
-    if (_0x5b6ecd["code"] || _0x5b6ecd["data"] && _0x5b6ecd['data']["code"]) return null;
-    if (typeof _0x5b6ecd["getData"] === 'function') try {
-      var _0x164b25 = gameRequire('data-index');
-      return _0x5b6ecd['getData'](new _0x164b25["War_GetTeamImgInfoResp"]());
-    }
-      catch (_0x5dc323) {
-        try {
-          return _0x5b6ecd['getData']();
-        }
-        catch (_0x168daa) {
-          return null;
-        }
-      }
-    if (_0x5b6ecd['data'] && typeof _0x5b6ecd['data']['getData'] === 'function') try {
-      var _0x4bfcea = gameRequire('data-index');
-      return _0x5b6ecd['data']["getData"](new _0x4bfcea[("War_GetT") + 'eamImgIn' + ("foResp")]());
-    }
-      catch (_0x2b35a9) {
-        try {
-          return _0x5b6ecd['data']["getData"]();
-        }
-        catch (_0x26978b) {
-          return null;
-        }
-      }
-    if (_0x5b6ecd['body'] && _0x5b6ecd['body']["teamInfo"]) return _0x5b6ecd["body"];
-    return _0x5b6ecd['data'] || _0x5b6ecd;
-  }
-  function extractTeamImgInfo(_0x4d51f6) {
-    var _0x2c414d = unwrapTeamImgInfoResponse(_0x4d51f6);
-    return _0x2c414d && _0x2c414d['teamInfo'] || null;
-  }
-  function _0x5f3b6a(_0x11b07f,
-    _0x263cf1) {
-    return !!(_0x11b07f && _0x263cf1["some"](function (_0x4696d2) {
-      return !!_0x24a98a(_0x11b07f,
-        _0x4696d2);
-    }));
-  }
-  function _0x438d83(_0x5f3242) {
-    var _0x21ac01 = getLegionWarModule();
-    if (!_0x5f3242 || !_0x5f3242['length'] || !_0x21ac01 || typeof _0x21ac01["sendGetTeamImgInfo"] !== 'function') return Promise['resolve'](null);
-    return new Promise(function (_0x3bd53b) {
-      var _0xb1b6f7 = false,
-        _0x2f3dae = 0,
-        _0x26e02f = null,
-        _0x4e5017 = false;
-      function detachListener() {
-        _0x4e5017 && _0x26e02f && _0x21ac01["network"] && typeof _0x21ac01["network"]['off'] === "function" && _0x21ac01['network']['off'](_0x26e02f,
-          onResponse,
-          state),
-          _0x4e5017 = false;
-      }
-      function cleanup() {
-        if (_0x2f3dae) window["clearTimeout"](_0x2f3dae);
-        _0x2f3dae = 0,
-          detachListener(),
-          state["activeRequests"]['delete'](cancel);
-      }
-      function finish(_0xa4bae0) {
-        if (_0xb1b6f7) return;
-        _0xb1b6f7 = true,
-          cleanup(),
-          _0x3bd53b(_0xa4bae0 || null);
-      }
-      function cancel() {
-        finish(null);
-      }
-      function onResponse(_0x33c44c) {
-        var _0x3202f5 = extractTeamImgInfo(_0x33c44c);
-        if (_0x5f3b6a(_0x3202f5,
-          _0x5f3242)) finish(_0x3202f5);
-      }
-      try {
-        var _0x19fc30 = gameRequire('data-index');
-        _0x26e02f = _0x19fc30["RESPS"] && _0x19fc30["RESPS"]["War_GetTeamImgInfoResp"],
-          _0x26e02f && _0x21ac01['network'] && typeof _0x21ac01['network']['on'] === "function" && (_0x21ac01["network"]['on'](_0x26e02f,
-            onResponse,
-            state),
-            _0x4e5017 = true);
-      }
-      catch (_0x3fd634) {
-      }
-      state["activeRequests"]["add"](cancel),
-        _0x2f3dae = window["setTimeout"](function () {
-          finish(null);
-        },
-          3500);
-      try {
-        var _0x2f9cc1 = _0x21ac01["sendGetTeamImgInfo"](_0x5f3242["slice"]());
-        if (_0x2f9cc1 && typeof _0x2f9cc1["then"] === 'function') detachListener(),
-          _0x2f9cc1['then'](function (_0x52b1c3) {
-            var _0x19f429 = extractTeamImgInfo(_0x52b1c3);
-            finish(_0x5f3b6a(_0x19f429,
-              _0x5f3242) ? _0x19f429 : null);
-          })["catch"](function (_0x496000) {
-            logWarn("头像图片读取失败:",
-              _0x496000 && _0x496000['message'] || _0x496000),
-              finish(null);
-          });
-        else {
-          if (_0x2f9cc1) {
-            var _0x1f449e = extractTeamImgInfo(_0x2f9cc1);
-            finish(_0x5f3b6a(_0x1f449e,
-              _0x5f3242) ? _0x1f449e : null);
-          }
-        }
-      }
-      catch (_0x36fcf7) {
-        logWarn("头像图片请求异常:",
-          _0x36fcf7 && _0x36fcf7['message'] || _0x36fcf7),
-          finish(null);
-        return;
-      }
-    });
-  }
-  function applyImageMatchesToTeam(_0x1473f1,
-    _0x3f3246) {
-    return (_0x1473f1 || [])["map"](function (_0x43c3e4) {
-      var _0xdb1ea6 = _0x3fd4ff(_0x43c3e4),
-        _0x2f4bf3 = normalizePngDataUrl(_0xdb1ea6 && _0xdb1ea6['imgName'])["toLowerCase"](),
-        _0x478f54 = _0x2f4bf3 && _0x3f3246 && _0x3f3246[_0x2f4bf3];
-      return _0x478f54 && (_0xdb1ea6["heroId"] = _0x478f54['heroId'],
-        _0xdb1ea6["heroName"] = _0x478f54["heroName"] || _0x478f54['name']),
-        _0xdb1ea6;
-    });
-  }
-  function identifyAvatarImage(_0x671606,
-    _0x285660) {
-    var _0x2609c2 = state["imagePending"]['get'](_0x671606);
-    if (_0x2609c2) return _0x2609c2;
-    return _0x2609c2 = matchAvatarImage(_0x285660)["then"](function (_0x275de2) {
-      if (state["destroyed"]) return null;
-      if (_0x275de2 && _0x275de2["accepted"]) return {
-        'heroId': _0x275de2['heroId'],
-        'heroName': _0x275de2['heroName'],
-        'variant': _0x275de2['variant'],
-        'distance': _0x275de2["distance"],
-        'margin': _0x275de2['margin'],
-        'accepted': true
-      };
-      return _0x275de2 && logInfo("头像未达到自动确认阈值:",
-        _0x671606,
-        _0x275de2['heroName'],
-        "distance=" + _0x275de2["distance"]['toFixed'](3),
-        "margin=" + _0x275de2['margin']["toFixed"](3)),
-        null;
-    })['catch'](function (_0xa1b314) {
-      return logWarn("头像识别失败:",
-        _0x671606,
-        _0xa1b314 && _0xa1b314['message'] || _0xa1b314),
-        null;
-    })['then'](function (_0x1d4b39) {
-      return state["imagePending"]['delete'](_0x671606),
-        _0x1d4b39;
-    }),
-      state["imagePending"]["set"](_0x671606,
-        _0x2609c2),
-      _0x2609c2;
-  }
-  function resolveTeamAvatarImages(_0x596fb9) {
-    var _0x230d92 = [],
-      _0x479343 = {
-      };
-    (_0x596fb9 || [])['forEach'](function (_0x242905) {
-      var _0x2fc224 = normalizePngDataUrl(_0x242905 && _0x242905['imgName'])["toLowerCase"]();
-      if (!_0x2fc224 || _0x479343[_0x2fc224]) return;
-      _0x479343[_0x2fc224] = true,
-        _0x230d92['push'](_0x2fc224);
-    });
-    if (!_0x230d92['length']) return Promise["resolve"](applyImageMatchesToTeam(_0x596fb9,
-      {
-      }));
-    return _0x438d83(_0x230d92)['then'](function (_0x5e8944) {
-      if (!_0x5e8944) return applyImageMatchesToTeam(_0x596fb9,
-        {
-        });
-      return Promise['all'](_0x230d92['map'](function (_0x572be9) {
-        var _0x5d8fad = _0x24a98a(_0x5e8944,
-          _0x572be9);
-        return _0x5d8fad ? identifyAvatarImage(_0x572be9,
-          _0x5d8fad) : Promise['resolve'](null);
-      }))['then'](function (_0x48575d) {
-        var _0x2eea72 = {
-        };
-        return _0x230d92['forEach'](function (_0x237ad6,
-          _0xc3dc12) {
-          if (_0x48575d[_0xc3dc12]) _0x2eea72[_0x237ad6] = _0x48575d[_0xc3dc12];
-        }),
-          applyImageMatchesToTeam(_0x596fb9,
-            _0x2eea72);
-      });
-    });
-  }
-  function getCachedTeamSummary(_0x8f0697) {
-    var _0x47014f = getPlayerCacheKey(_0x8f0697),
-      _0x1f62fa = _0x47014f ? state["teamCache"]['get'](_0x47014f) || null : null;
-    if (!_0x1f62fa) return null;
-    if (TEAM_CACHE_TTL_MS > 0 && Date["now"]() - Number(_0x1f62fa['cachedAt'] || 0) > TEAM_CACHE_TTL_MS) return state["teamCache"]['delete'](_0x47014f),
-      null;
-    return _0x1f62fa;
-  }
-  function getAttackTargetId(_0x3f5c1a) {
-    if (!_0x3f5c1a) return 0;
-    try {
-      if (_0x3f5c1a['hasTeam'] && _0x3f5c1a['team'] && _0x3f5c1a['team']['leaderId']) return Number(_0x3f5c1a['team']['leaderId']) || 0;
-    }
-    catch (_0x1f6d4b) {
-    }
-    return getRoleCodeId(_0x3f5c1a);
-  }
-  function copyPosition(_0x2bb503) {
-    return _0x2bb503 && isFinite(Number(_0x2bb503['x'])) && isFinite(Number(_0x2bb503['y'])) ? {
-      'x': Number(_0x2bb503['x']),
-      'y': Number(_0x2bb503['y'])
-    } : null;
-  }
-  function getPlayerById(_0x4e91d5) {
-    var _0x4c76b2 = getBattlefield(),
-      _0x35ed9e = _0x4c76b2 && _0x4c76b2['players'];
-    if (!_0x35ed9e || !_0x4e91d5) return null;
-    try {
-      return _0x35ed9e['get'](_0x4e91d5) || _0x35ed9e['get'](String(_0x4e91d5)) || null;
-    }
-    catch (_0x3bc7f1) {
-      return null;
+
+  /* ============================================================================
+   * 8. AUTO DIG (自动刨地模块)
+   * ============================================================================ */
+
+  function updateAutoDigControl(ctrlItem) {
+    var btnDig = ctrlItem && ctrlItem.button;
+    var lblDig = ctrlItem && ctrlItem.label;
+    var buildingPanel = ctrlItem && ctrlItem.panel;
+    var buildingData = buildingPanel && buildingPanel._building;
+    var isInBuilding = !!(buildingData && buildingData.inBuilding);
+    if (!btnDig) return;
+
+    btnDig.visible = isInBuilding;
+    btnDig.touchable = isInBuilding;
+    btnDig.enabled = true;
+    if (lblDig) lblDig.visible = isInBuilding;
+
+    var ctrlIsOpen = btnDig.m_isOpen || (typeof btnDig.getController === 'function' && btnDig.getController('isOpen'));
+    var ctrlIsSlide = btnDig.m_isSlide || (typeof btnDig.getController === 'function' && btnDig.getController('isSlide'));
+
+    if (ctrlIsOpen) ctrlIsOpen.selectedPage = String(!!state.autoDig);
+    if (ctrlIsSlide) ctrlIsSlide.selectedPage = 'false';
+
+    var targetSlideNode = state.autoDig ? btnDig.m_onSlide : btnDig.m_offSlide;
+    if (btnDig.m_slide && targetSlideNode && isFinite(Number(targetSlideNode.x))) {
+      btnDig.m_slide.x = Number(targetSlideNode.x);
     }
   }
-  function samePosition(_0x5b6be1,
-    _0x2a4c4f) {
-    return !!(_0x5b6be1 && _0x2a4c4f && Number(_0x5b6be1['x']) === Number(_0x2a4c4f['x']) && Number(_0x5b6be1['y']) === Number(_0x2a4c4f['y']));
-  }
-  function isSameLegionTarget(_0x239547) {
-    var _0x5aa072 = getBattlefield(),
-      _0x401a11 = _0x5aa072 && _0x5aa072['self'],
-      _0x4d587d = _0x239547 && _0x239547['legionId'],
-      _0x3d9357 = _0x401a11 && _0x401a11['legionId'];
-    return _0x4d587d !== undefined && _0x4d587d !== null && _0x4d587d !== '' && Number(_0x4d587d) !== 0 && _0x3d9357 !== undefined && _0x3d9357 !== null && _0x3d9357 !== '' && String(_0x4d587d) === String(_0x3d9357);
-  }
-  function getTargetMarch(_0x554398) {
-    var _0x401a77 = getBattlefield(),
-      _0x3f5b0c = _0x401a77 && _0x401a77['marches'],
-      _0x2b82a8 = getAttackTargetId(_0x554398),
-      _0x5ee23b = getRoleCodeId(_0x554398),
-      _0x4f4963 = _0x554398 && _0x554398['marchId'],
-      _0x4138e8 = null,
-      _0x1e3b54 = [];
-    if (!_0x3f5b0c) return null;
-    try {
-      if (_0x4f4963 && typeof _0x3f5b0c['get'] === 'function') _0x4138e8 = _0x3f5b0c['get'](_0x4f4963) || _0x3f5b0c['get'](String(_0x4f4963));
-    }
-    catch (_0x5d36a1) {
-    }
-    if (_0x4138e8) return _0x4138e8;
-    try {
-      var _0x49535f = _0x554398 && _0x554398['team'],
-        _0x5f5064 = _0x49535f && (_0x49535f['players'] || _0x49535f['livePlayers']);
-      Array['isArray'](_0x5f5064) && _0x5f5064['forEach'](function (_0x49ae54) {
-        var _0x151d8f = getRoleCodeId(_0x49ae54);
-        _0x151d8f && _0x1e3b54['push'](Number(_0x151d8f));
-      });
-    }
-    catch (_0x374ba1) {
-    }
-    try {
-      _0x3f5b0c['forEach'](function (_0x20f9d7) {
-        if (_0x4138e8 || !_0x20f9d7) return;
-        var _0x218418 = Number(_0x20f9d7['codeId']);
-        if (_0x218418 === Number(_0x2b82a8) || _0x218418 === Number(_0x5ee23b) || _0x1e3b54['indexOf'](_0x218418) >= 0) _0x4138e8 = _0x20f9d7;
-      });
-    }
-    catch (_0x45817b) {
-    }
-    return _0x4138e8;
-  }
-  function getMarchDestination(_0x3dbdb8) {
-    var _0x5e3470 = getTargetMarch(_0x3dbdb8),
-      _0x48220d = _0x5e3470 && (_0x5e3470['toBuilding'] || null),
-      _0x3ea3ec = copyPosition(_0x5e3470 && _0x5e3470['to']) || copyPosition(_0x48220d && _0x48220d['position']),
-      _0xe0acb3 = _0x5e3470 && _0x5e3470['toBuildingId'] || _0x48220d && _0x48220d['id'] || (_0x3ea3ec && _0x3ea3ec['x'] + '_' + _0x3ea3ec['y']);
-    return _0x5e3470 ? {
-      'march': _0x5e3470,
-      'buildingId': _0xe0acb3 || '',
-      'position': _0x3ea3ec
-    } : null;
-  }
-  function updateTargetArrivalCountdown(_0x397aa5,
-    _0x36e6ca) {
-    var _0x495a8b,
-      _0x4ef2c2,
-      _0x1299ef,
-      _0x5a1574;
-    if (!_0x397aa5 || !_0x397aa5['waitingForTarget']) return false;
-    _0x495a8b = getMarchDestination(_0x36e6ca);
-    if (_0x495a8b) {
-      _0x397aa5['targetEndMarchTime'] = Number(_0x495a8b['march'] && _0x495a8b['march']['endTime']) || _0x397aa5['targetEndMarchTime'] || 0;
-      if (!_0x397aa5['destinationKnown']) _0x397aa5['buildingId'] = _0x495a8b['buildingId'] || '',
-        _0x397aa5['position'] = _0x495a8b['position'],
-        _0x397aa5['destinationKnown'] = !!(_0x397aa5['buildingId'] || _0x397aa5['position']);
-    }
-    _0x4ef2c2 = normalizeTimestamp(Number(_0x397aa5['targetEndMarchTime']) || Number(_0x36e6ca && _0x36e6ca['endMarchTime']) || 0);
-    if (!_0x4ef2c2) return hideMarchCountdown(), false;
-    _0x1299ef = Math['max'](0, _0x4ef2c2 - getServerTimeNow());
-    _0x5a1574 = Math['ceil'](_0x1299ef / 1000);
-    var targetName = getPlayerName(_0x36e6ca) || ('ID:' + getRoleCodeId(_0x36e6ca));
-    var destName = getPlayerMarchTargetName(_0x36e6ca);
-    var msg = '锁定【' + targetName + '】' + (destName ? ('前往[' + destName + ']') : '') + ' 剩余 ' + _0x5a1574 + ' 秒到达';
-    showCountdownMessage(msg, _0x5a1574);
-    return true;
-  }
-  function getLockedTargetRecord(_0x55d2fc) {
-    var _0x3a2252 = state['lockedTarget'];
-    if (_0x3a2252 && Number(_0x3a2252['targetId']) === Number(_0x55d2fc)) return _0x3a2252;
-    for (var _0x5a3a92 = 0; _0x5a3a92 < state['lockQueue']['length']; _0x5a3a92++)if (Number(state['lockQueue'][_0x5a3a92]['targetId']) === Number(_0x55d2fc)) return state['lockQueue'][_0x5a3a92];
-    return null;
-  }
-  function updateLockControl(_0x2f4d9f) {
-    var _0x1a6b6c = _0x2f4d9f && _0x2f4d9f['__saltQueueLockButton'],
-      _0x26a7ba = _0x2f4d9f && _0x2f4d9f['__saltQueuePlayer'],
-      _0x2d6e3f = _0x26a7ba && !!getLockedTargetRecord(getAttackTargetId(_0x26a7ba)),
-      _0x24d1bb = _0x2f4d9f && _0x2f4d9f['m_btnFight'],
-      _0x19e8d7 = Number(_0x24d1bb && _0x24d1bb['height']) || 50,
-      _0x3a1b4b = Number(_0x24d1bb && _0x24d1bb['width']) || 120,
-      _0x28613c = Number(_0x24d1bb && _0x24d1bb['x']),
-      _0x337938,
-      _0x500241 = !!_0x26a7ba && !isSelfPlayer(_0x26a7ba) && !isSameLegionTarget(_0x26a7ba),
-      _0x52117f;
-    if (!_0x1a6b6c) return;
-    if (!isFinite(_0x28613c)) _0x28613c = (Number(_0x2f4d9f && _0x2f4d9f['width']) || 520) - _0x3a1b4b;
-    _0x337938 = Math['max'](0, _0x28613c - _0x3a1b4b - 10),
-      _0x502487(_0x1a6b6c, _0x3a1b4b, _0x19e8d7),
-      _0x15c23b(_0x1a6b6c, _0x337938, Number(_0x24d1bb && _0x24d1bb['y']) || 20),
-      _0x1a6b6c['visible'] = _0x500241,
-      _0x1a6b6c['touchable'] = _0x500241,
-      _0x1a6b6c['enabled'] = true,
-      _0x1a6b6c['grayed'] = false,
-      _0x1a6b6c['alpha'] = 1,
-      _0x1a6b6c['sortingOrder'] = 9999,
-      _0x1a6b6c['title'] = _0x2d6e3f ? '锁定中' : '锁定',
-      _0x52117f = _0x1a6b6c['m_color'] || typeof _0x1a6b6c['getController'] === 'function' && _0x1a6b6c['getController']('color'),
-      _0x52117f && (_0x52117f['selectedPage'] = 'green');
-    try {
-      typeof _0x2f4d9f['setChildIndex'] === 'function' && _0x2f4d9f['setChildIndex'](_0x1a6b6c, Math['max'](0, Number(_0x2f4d9f['numChildren'] || 1) - 1));
-    }
-    catch (_0x49cd49) {
-    }
-  }
-  function ensureLockControl(_0x3a6f41) {
-    var _0x196e9b = getFgui(),
-      _0x2c5f8c = _0x3a6f41 && _0x3a6f41['__saltQueueLockButton'],
-      _0x1fb7f8,
-      _0x3d5fae = _0x3a6f41 && _0x3a6f41['m_btnFight'],
-      _0x127d6f,
-      _0x1e5288;
-    if (!_0x3a6f41) return null;
-    if (_0x2c5f8c && _0x196e9b && _0x196e9b['GButton'] && !(_0x2c5f8c instanceof _0x196e9b['GButton'])) {
-      try {
-        _0x2c5f8c['clearClick'] && _0x2c5f8c['clearClick'](),
-          _0x2c5f8c['parent'] && typeof _0x2c5f8c['parent']['removeChild'] === 'function' && _0x2c5f8c['parent']['removeChild'](_0x2c5f8c),
-          _0x2c5f8c['dispose'] && _0x2c5f8c['dispose']();
-      }
-      catch (_0x4d0e6f) {
-      }
-      _0x3a6f41['__saltQueueLockButton'] = null,
-        _0x2c5f8c = null;
-    }
-    if (!_0x2c5f8c && _0x196e9b && _0x196e9b['UIPackage'] && _0x3d5fae) {
-      try {
-        _0x127d6f = _0x3d5fae['resourceURL'],
-          _0x2c5f8c = _0x127d6f && _0x196e9b['UIPackage']['createObjectFromURL'](_0x127d6f);
-      }
-      catch (_0x125777) {
-        _0x2c5f8c = null;
-      }
-      if (_0x2c5f8c) {
-        _0x2c5f8c['name'] = 'saltQueueLockButton',
-          _0x3a6f41['addChild'](_0x2c5f8c),
-          _0x3a6f41['__saltQueueLockButton'] = _0x2c5f8c,
-          state['items']['indexOf'](_0x3a6f41) < 0 && state['items']['push'](_0x3a6f41);
-      }
-    }
-    if (!_0x2c5f8c) return null;
-    _0x2c5f8c['touchable'] = true,
-      _0x2c5f8c['enabled'] = true,
-      _0x2c5f8c['grayed'] = false,
-      _0x2c5f8c['title'] = '锁定',
-      _0x2c5f8c['clearClick'] && _0x2c5f8c['clearClick'](),
-      _0x1fb7f8 = function () {
-        toggleLockedTarget(_0x3a6f41['__saltQueuePlayer'], _0x3a6f41);
-      },
-      _0x2c5f8c['onClick'] && _0x2c5f8c['onClick'](_0x1fb7f8),
-      _0x1e5288 = _0x2c5f8c['m_color'] || typeof _0x2c5f8c['getController'] === 'function' && _0x2c5f8c['getController']('color'),
-      _0x1e5288 && (_0x1e5288['selectedPage'] = 'green'),
-      updateLockControl(_0x3a6f41);
-    return _0x2c5f8c;
-  }
-  function refreshLockControls() {
-    state['items']['forEach'](function (_0x56d50c) {
-      updateLockControl(_0x56d50c);
-    });
-  }
-  function toggleLockedTarget(_0x2c16d5,
-    _0x4eb632) {
-    var _0x3e7c7e,
-      _0x4c3e6f,
-      _0x1e647a,
-      _0x3f3f3e,
-      _0x216490,
-      _0xa45b50,
-      _0x328272,
-      _0x5d89d2;
-    if (!_0x2c16d5 || isSelfPlayer(_0x2c16d5) || isSameLegionTarget(_0x2c16d5)) return false;
-    _0x3e7c7e = getAttackTargetId(_0x2c16d5);
-    if (!_0x3e7c7e) return false;
-    _0x328272 = getLockedTargetRecord(_0x3e7c7e);
-    if (_0x328272) {
-      if (_0x328272 === state['lockedTarget']) clearLockedTarget();
-      else state['lockQueue'] = state['lockQueue']['filter'](function (_0x4d73ee) {
-        return _0x4d73ee !== _0x328272;
-      }), refreshLockControls();
-      return true;
-    }
-    _0xa45b50 = isMarchState(_0x2c16d5),
-      _0x216490 = _0xa45b50 && getMarchDestination(_0x2c16d5),
-      _0x4c3e6f = _0x216490 && _0x216490['march'] && _0x216490['march']['toBuilding'] || _0x2c16d5['curBuilding'],
-      _0x1e647a = _0x216490 && _0x216490['position'] || (_0xa45b50 ? null : copyPosition(_0x2c16d5['position'])),
-      _0x3f3f3e = _0x4c3e6f && _0x4c3e6f['id'] || (_0x1e647a && _0x1e647a['x'] + '_' + _0x1e647a['y']);
-    if (_0x216490 && _0x216490['buildingId']) _0x3f3f3e = _0x216490['buildingId'];
-    if (!_0xa45b50 && !_0x1e647a && !_0x3f3f3e) return false;
-    _0x5d89d2 = {
-      'targetId': _0x3e7c7e,
-      'target': _0x2c16d5,
-      'buildingId': _0x3f3f3e || '',
-      'position': _0x1e647a,
-      'waitingForTarget': _0xa45b50,
-      'destinationKnown': !!(_0x1e647a || _0x3f3f3e),
-      'targetEndMarchTime': Number(_0x216490 && _0x216490['march'] && _0x216490['march']['endTime']) || Number(_0x2c16d5['endMarchTime']) || 0,
-      'originPosition': copyPosition(getBattlefield() && getBattlefield()['self'] && getBattlefield()['self']['position']),
-      'originBuildingId': getBattlefield() && getBattlefield()['self'] && getBattlefield()['self']['curBuilding'] && getBattlefield()['self']['curBuilding']['id'] || '',
-      'targetLeft': false,
-      'targetLeftNotified': false,
-      'returning': false,
-      'returnSent': false,
-      'engaged': false,
-      'engagedAt': 0,
-      'combatSeen': false,
-      'failedAttempts': 0,
-      'lastActionAt': 0
-    },
-      state['lockedTarget'] ? state['lockQueue']['push'](_0x5d89d2) : state['lockedTarget'] = _0x5d89d2,
-      state['lastLockActionAt'] = 0,
-      refreshLockControls(),
-      logInfo('锁定盐场目标:', _0x3e7c7e, _0x3f3f3e, '当前队列总数:', state['lockQueue']['length'] + (state['lockedTarget'] ? 1 : 0));
-    if (state['lockedTarget'] === _0x5d89d2) runLockedAttack();
-    return true;
-  }
-  function clearLockedTarget() {
-    state['lockedTarget'] = null,
-      state['lastLockActionAt'] = 0,
-      hideMarchCountdown();
-    while (!state['lockedTarget'] && state['lockQueue']['length']) state['lockedTarget'] = state['lockQueue']['shift']();
-    refreshLockControls();
-  }
-  function clearAllLockedTargets() {
-    state['lockQueue'] = [],
-      state['lockedTarget'] = null,
-      state['lastLockActionAt'] = 0,
-      hideMarchCountdown(),
-      refreshLockControls();
-  }
-  function requestAutoSpeedUp(_0x42c4e7,
-    _0x1d2a4a) {
-    var _0x4bd36e,
-      _0x2d7b33,
-      _0x23f0a1 = Date['now']();
-    if (!state['autoSpeedUp'] || !_0x42c4e7 || !_0x1d2a4a) return;
-    if (!isMarchState(_0x1d2a4a)) {
-      state['speedUpMarchId'] = 0;
-      state['speedUpRequestedAt'] = 0;
-      return;
-    }
-    _0x2d7b33 = _0x1d2a4a['marchId'];
-    if (!_0x2d7b33 || _0x23f0a1 - Number(state['speedUpRequestedAt'] || 0) < 1500) return;
-    state['speedUpRequestedAt'] = _0x23f0a1;
-    state['speedUpMarchId'] = _0x2d7b33;
-    try {
-      _0x4bd36e = _0x42c4e7['sendSpeedUp'] && _0x42c4e7['sendSpeedUp'](_0x2d7b33);
-      if (!_0x4bd36e) return;
-      _0x4bd36e && typeof _0x4bd36e['catch'] === 'function' && _0x4bd36e['catch'](function () { });
-      logInfo('已使用金砖加速行军:', _0x2d7b33);
-    }
-    catch (_0x2c9b2a) {
-      logWarn('金砖加速调用失败:', _0x2c9b2a && _0x2c9b2a['message'] || _0x2c9b2a);
-    }
-  }
-  function getPlayerStateType(_0x351e3e) {
-    try {
-      var _0x2b922a = gameRequire('types-legion-war'),
-        _0x521fbc = _0x2b922a && _0x2b922a['LWPlayerStateType'];
-      return _0x521fbc && _0x521fbc[_0x351e3e];
-    }
-    catch (_0x492aa6) {
-      return undefined;
-    }
-  }
-  function isMarchState(_0x44940e) {
-    var _0x1442be = _0x44940e && _0x44940e['state'],
-      _0x317da5 = getPlayerStateType('march');
-    return _0x1442be === 'march' || _0x317da5 !== undefined && _0x1442be === _0x317da5;
-  }
-  function isIdleState(_0x9e82c2) {
-    var _0x38bfae = _0x9e82c2 && _0x9e82c2['state'],
-      _0x2bd92e = getPlayerStateType('idle');
-    return _0x38bfae === 'idle' || _0x38bfae === 0 || _0x2bd92e !== undefined && _0x38bfae === _0x2bd92e;
-  }
-  function isCombatState(_0x2be116) {
-    var _0x43299d = _0x2be116 && _0x2be116['state'],
-      _0x45dfdd = getPlayerStateType('combat');
-    return _0x43299d === 'combat' || _0x45dfdd !== undefined && _0x43299d === _0x45dfdd;
-  }
-  function isDeadState(_0x17a694) {
-    var _0x3d2832 = _0x17a694 && _0x17a694['state'],
-      _0x164b39 = getPlayerStateType('die'),
-      _0x187a06 = getPlayerStateType('resurrect'),
-      _0x302219 = getPlayerStateType('over');
-    return _0x3d2832 === 'die' || _0x3d2832 === 'resurrect' || _0x3d2832 === 'over' || _0x164b39 !== undefined && _0x3d2832 === _0x164b39 || _0x187a06 !== undefined && _0x3d2832 === _0x187a06 || _0x302219 !== undefined && _0x3d2832 === _0x302219;
-  }
-  function sameTargetId(_0x4f5c6c,
-    _0x2d7f99) {
-    return Number(_0x4f5c6c) > 0 && Number(_0x4f5c6c) === Number(_0x2d7f99);
-  }
-  function playerContainsTarget(_0x439285,
-    _0x3c1cd8) {
-    var _0x3d6812,
-      _0x5dc99b;
-    if (!_0x439285 || !_0x3c1cd8) return false;
-    if (sameTargetId(getAttackTargetId(_0x439285), _0x3c1cd8) || sameTargetId(getRoleCodeId(_0x439285), _0x3c1cd8)) return true;
-    _0x3d6812 = _0x439285['team'],
-      _0x5dc99b = _0x3d6812 && (_0x3d6812['livePlayers'] || _0x3d6812['players']);
-    return !!(Array['isArray'](_0x5dc99b) && _0x5dc99b['some'](function (_0x218e5a) {
-      return sameTargetId(getRoleCodeId(_0x218e5a), _0x3c1cd8);
-    }));
-  }
-  function findTargetInBuildingQueues(_0x4912ec,
-    _0x1c429a) {
-    var _0x26b264 = [['attack', _0x4912ec && _0x4912ec['attackerList']], ['defense', _0x4912ec && _0x4912ec['defenderList']]],
-      _0x15c7c0,
-      _0x359019,
-      _0x43ec18;
-    for (_0x15c7c0 = 0; _0x15c7c0 < _0x26b264['length']; _0x15c7c0++) {
-      _0x359019 = _0x26b264[_0x15c7c0][1];
-      if (!Array['isArray'](_0x359019)) continue;
-      for (_0x43ec18 = 0; _0x43ec18 < _0x359019['length']; _0x43ec18++)if (playerContainsTarget(_0x359019[_0x43ec18], _0x1c429a)) return {
-        'queue': _0x26b264[_0x15c7c0][0],
-        'player': _0x359019[_0x43ec18]
-      };
-    }
-    return null;
-  }
-  function normalizeBattleTimestamp(_0x35fabf) {
-    var _0x11bbfc = Number(_0x35fabf) || 0;
-    return _0x11bbfc > 0 && _0x11bbfc < 100000000000 ? _0x11bbfc * 1000 : _0x11bbfc;
-  }
-  function readBattleTargetId(_0xc26c4d,
-    _0x410e5d) {
-    var _0x4d978a = _0x410e5d === 'left' ? ['leftId', 'leftCodeId'] : ['rightId', 'rightCodeId'],
-      _0x593664,
-      _0x471b35;
-    for (_0x593664 = 0; _0x593664 < _0x4d978a['length']; _0x593664++) {
-      _0x471b35 = Number(_0xc26c4d && _0xc26c4d[_0x4d978a[_0x593664]]) || 0;
-      if (_0x471b35 > 0) return _0x471b35;
-    }
-    _0x471b35 = _0xc26c4d && _0xc26c4d[_0x410e5d];
-    return getAttackTargetId(_0x471b35) || getRoleCodeId(_0x471b35) || 0;
-  }
-  function makeBattleInfo(_0x388042,
-    _0x32a3a5) {
-    var _0x1f698b = readBattleTargetId(_0x388042, 'left'),
-      _0x58e787 = readBattleTargetId(_0x388042, 'right');
-    if (!sameTargetId(_0x1f698b, _0x32a3a5) && !sameTargetId(_0x58e787, _0x32a3a5)) return null;
-    return {
-      'leftId': _0x1f698b,
-      'rightId': _0x58e787,
-      'opponentId': sameTargetId(_0x1f698b, _0x32a3a5) ? _0x58e787 : _0x1f698b,
-      'targetSide': sameTargetId(_0x1f698b, _0x32a3a5) ? 'left' : 'right',
-      'startTime': normalizeBattleTimestamp(_0x388042 && _0x388042['startTime']),
-      'endTime': normalizeBattleTimestamp(_0x388042 && _0x388042['endTime'])
-    };
-  }
-  function findTargetBattle(_0x4b0c62,
-    _0x58bcdb) {
-    var _0x411822 = _0x4b0c62 && _0x4b0c62['battleList'],
-      _0x18ea10,
-      _0x3ed063,
-      _0xd532b7 = getBattlefield(),
-      _0x28f93c = _0xd532b7 && _0xd532b7['battles'];
-    if (Array['isArray'](_0x411822)) for (_0x18ea10 = 0; _0x18ea10 < _0x411822['length']; _0x18ea10++)if ((_0x3ed063 = makeBattleInfo(_0x411822[_0x18ea10], _0x58bcdb))) return _0x3ed063;
-    try {
-      _0x28f93c && _0x28f93c['forEach'](function (_0x521b0d) {
-        if (!_0x3ed063) _0x3ed063 = makeBattleInfo(_0x521b0d, _0x58bcdb);
-      });
-    }
-    catch (_0x5ebc92) {
-    }
-    return _0x3ed063 || null;
-  }
-  function getLockedBattleEndTime(_0x1b8d07,
-    _0x34cac8) {
-    var _0x1aaa45 = normalizeBattleTimestamp(_0x1b8d07 && _0x1b8d07['endBattleTime']),
-      _0x4afe8a = _0x1b8d07 && _0x1b8d07['curBuilding'],
-      _0x2300ab;
-    if (_0x1aaa45 > 0) return _0x1aaa45;
-    _0x2300ab = findTargetBattle(_0x4afe8a, _0x34cac8);
-    return Number(_0x2300ab && _0x2300ab['endTime']) || 0;
-  }
-  function updateLockedBattleCountdown(_0x20a152,
-    _0xb8f13a) {
-    var _0x57fffa = getLockedBattleEndTime(_0x20a152, _0xb8f13a),
-      _0x4fe8cb,
-      _0x342a43;
-    if (!_0x57fffa) return showCountdownMessage('正在与锁定目标战斗', -2);
-    _0x4fe8cb = Math['max'](0, _0x57fffa - getServerTimeNow()),
-      _0x342a43 = Math['ceil'](_0x4fe8cb / 1000),
-      showCountdownMessage('与锁定目标战斗还有 ' + _0x342a43 + ' 秒', _0x342a43);
-  }
-  function updateThirdPartyBattleCountdown(_0x4c50aa,
-    _0x3846be) {
-    var _0x33d0fc,
-      _0x5e2545,
-      _0xa70fc8;
-    if (!_0x4c50aa) return false;
-    _0x33d0fc = Number(_0x4c50aa['endTime']) || 0,
-      _0x5e2545 = _0x33d0fc > 0 ? Math['ceil'](Math['max'](0, _0x33d0fc - getServerTimeNow()) / 1000) : -1,
-      _0xa70fc8 = _0x4c50aa['leftId'] + '>' + _0x4c50aa['rightId'] + '@' + _0x33d0fc;
-    if (_0x3846be && _0x3846be['waitingBattleKey'] !== _0xa70fc8) _0x3846be['waitingBattleKey'] = _0xa70fc8,
-      logInfo('识别第三方战斗:', _0x4c50aa['leftId'], '攻击', _0x4c50aa['rightId'], '结束时间:', _0x33d0fc);
-    showCountdownMessage(_0x5e2545 >= 0 ? '锁定目标战斗中，剩余 ' + _0x5e2545 + ' 秒' : '锁定目标正在第三方战斗，等待回到队列', _0x5e2545 >= 0 ? _0x5e2545 : -3);
-    return true;
-  }
-  function runAutoBuildingAttack(_0x4be7ea,
-    _0x54d6a9) {
-    var _0xc5f7da,
-      _0x5d4c21,
-      _0x5a58dc,
-      _0x3a896b;
-    if (!state['autoDig'] || state['lockedTarget'] || state['lockQueue']['length'] || !_0x4be7ea || !_0x54d6a9) return;
-    _0x4be7ea['isAutoAttack'] !== undefined && (_0x4be7ea['isAutoAttack'] = true),
-      _0xc5f7da = _0x54d6a9['curBuilding'];
-    if (!_0xc5f7da || !_0xc5f7da['inBuilding'] || !_0xc5f7da['canAttackBuilding'] || !isIdleState(_0x54d6a9) || typeof _0x4be7ea['sendStartAttackBuilding'] !== 'function') return;
-    _0x5d4c21 = _0xc5f7da['id'];
-    _0x5a58dc = Date['now']();
-    if (!_0x5d4c21 || state['lastBuildingAttackId'] === _0x5d4c21 && _0x5a58dc - Number(state['lastBuildingAttackAt'] || 0) < 2000) return;
-    state['lastBuildingAttackId'] = _0x5d4c21,
-      state['lastBuildingAttackAt'] = _0x5a58dc;
-    try {
-      _0x3a896b = _0x4be7ea['sendStartAttackBuilding'](_0x5d4c21),
-        _0x3a896b && typeof _0x3a896b['catch'] === 'function' && _0x3a896b['catch'](function () { }),
-        _0x3a896b && logInfo('已自动攻打建筑:', _0x5d4c21);
-    }
-    catch (_0x5aa99b) {
-      logWarn('自动攻打建筑调用失败:', _0x5aa99b && _0x5aa99b['message'] || _0x5aa99b);
-    }
-  }
-  function getQueuedTargetAtCurrentBuilding(_0x5b5a41,
-    _0x38c18f) {
-    var _0x4cc8b8 = -1,
-      _0x3da897 = null,
-      _0x2eb25d,
-      _0x27c965,
-      _0x1808d2,
-      _0x230322,
-      _0x4bd930,
-      _0x16e941;
-    if (!_0x5b5a41) return null;
-    _0x230322 = _0x5b5a41['curBuilding'] && _0x5b5a41['curBuilding']['id'];
-    for (_0x2eb25d = 0; _0x2eb25d < state['lockQueue']['length']; _0x2eb25d++) {
-      _0x27c965 = state['lockQueue'][_0x2eb25d];
-      _0x1808d2 = getPlayerById(_0x27c965['targetId']) || _0x27c965['target'];
-      if (!_0x1808d2 || isDeadState(_0x1808d2) || isMarchState(_0x1808d2) || isSameLegionTarget(_0x1808d2)) continue;
-      _0x16e941 = findTargetInBuildingQueues(_0x5b5a41['curBuilding'], _0x27c965['targetId']);
-      if (_0x16e941) return {
-        'index': _0x2eb25d,
-        'record': _0x27c965,
-        'target': _0x16e941['player'] || _0x1808d2
-      };
-      _0x4bd930 = _0x1808d2['curBuilding'] && _0x1808d2['curBuilding']['id'];
-      if (!(_0x230322 && _0x4bd930 && String(_0x230322) === String(_0x4bd930)) && !samePosition(_0x1808d2['position'], _0x5b5a41['position'])) continue;
-      if (isIdleState(_0x1808d2)) return {
-        'index': _0x2eb25d,
-        'record': _0x27c965,
-        'target': _0x1808d2
-      };
-      if (!_0x38c18f && _0x4cc8b8 < 0) _0x4cc8b8 = _0x2eb25d,
-        _0x3da897 = _0x1808d2;
-    }
-    return _0x4cc8b8 < 0 ? null : {
-      'index': _0x4cc8b8,
-      'record': state['lockQueue'][_0x4cc8b8],
-      'target': _0x3da897
-    };
-  }
-  function promoteQueuedTargetAtCurrentBuilding(_0x3ac42c,
-    _0x5419cd,
-    _0x496bf8) {
-    var _0x59381c = getQueuedTargetAtCurrentBuilding(_0x3ac42c, _0x5419cd),
-      _0xe367f6 = state['lockedTarget'],
-      _0x462c29,
-      _0x2f453c;
-    if (!_0x59381c) return false;
-    _0x462c29 = state['lockQueue']['splice'](_0x59381c['index'], 1)[0],
-      _0x462c29['target'] = _0x59381c['target'],
-      _0x2f453c = _0x59381c['target']['curBuilding'],
-      _0x462c29['buildingId'] = _0x2f453c && _0x2f453c['id'] || _0x462c29['buildingId'],
-      _0x462c29['position'] = copyPosition(_0x59381c['target']['position']) || copyPosition(_0x2f453c && _0x2f453c['position']) || _0x462c29['position'],
-      _0x462c29['waitingForTarget'] = false,
-      _0x462c29['destinationKnown'] = true,
-      _0x462c29['targetLeft'] = false,
-      _0x462c29['targetLeftNotified'] = false,
-      _0x462c29['returning'] = false,
-      _0x462c29['returnSent'] = false,
-      _0x462c29['lastActionAt'] = 0;
-    if (_0x496bf8 && _0xe367f6) state['lockQueue']['push'](_0xe367f6);
-    state['lockedTarget'] = _0x462c29,
-      state['lastLockActionAt'] = 0,
-      hideMarchCountdown(),
-      refreshLockControls();
-    return true;
-  }
-  function runLockedAttack() {
-    var _0x21e6c1 = state['lockedTarget'],
-      _0x4ae6e8,
-      _0x1d7b65,
-      _0x2f7ae7,
-      _0x5cdaef,
-      _0x4aa8f8,
-      _0x2a4ae3,
-      _0x138f93,
-      _0x33f6d1,
-      _0x4b3a2f,
-      _0x2b9c67,
-      _0x3946c1,
-      _0x1c24e7,
-      _0x2b92fd,
-      _0x1afc6c;
-    if (state['destroyed'] || !_0x21e6c1) return;
-    _0x4ae6e8 = getLegionWarModule(),
-      _0x1d7b65 = getBattlefield(),
-      _0x2f7ae7 = _0x1d7b65 && _0x1d7b65['self'],
-      _0x5cdaef = getPlayerById(_0x21e6c1['targetId']) || _0x21e6c1['target'];
-    if (!_0x4ae6e8 || !_0x1d7b65 || !_0x2f7ae7) return;
-    if (_0x4ae6e8['isAutoAttack'] !== undefined) _0x4ae6e8['isAutoAttack'] = false;
-    _0x138f93 = Date['now']();
-    if (isDeadState(_0x2f7ae7)) return logInfo('自身已死亡，停止全部锁定目标。'), clearAllLockedTargets();
-    if (_0x21e6c1['engaged']) {
-      if (isCombatState(_0x2f7ae7)) {
-        _0x21e6c1['combatSeen'] = true;
-        _0x21e6c1['failedAttempts'] = 0;
-        return updateLockedBattleCountdown(_0x2f7ae7, _0x21e6c1['targetId']);
-      }
-      if (_0x21e6c1['combatSeen']) {
-        if (isIdleState(_0x2f7ae7)) return logInfo('当前锁定目标战斗结束，切换下一个。'), clearLockedTarget(), state['lockedTarget'] && runLockedAttack();
-        return;
-      }
-      if (!isIdleState(_0x2f7ae7) || _0x138f93 - Number(_0x21e6c1['engagedAt'] || 0) < 2500) return;
-      _0x21e6c1['engaged'] = false;
-      _0x21e6c1['lastActionAt'] = 0;
-      _0x21e6c1['failedAttempts'] = (Number(_0x21e6c1['failedAttempts']) || 0) + 1;
-      logInfo('开战状态未同步，重新尝试当前锁定目标，失败重试次数:', _0x21e6c1['failedAttempts']);
-      if (_0x21e6c1['failedAttempts'] >= 3) {
-        logInfo('目标连续3次开战失败（可能受限或无法攻击），放弃该目标切换下一个。');
-        clearLockedTarget();
-        state['lockedTarget'] && runLockedAttack();
-        return;
-      }
-    }
-    if (!_0x5cdaef || isDeadState(_0x5cdaef)) return logInfo('锁定目标已离场，切换下一个。'), clearLockedTarget(), state['lockedTarget'] && runLockedAttack();
-    if (_0x21e6c1['waitingForTarget'] && _0x5cdaef) {
-      if (isMarchState(_0x5cdaef)) {
-        updateTargetArrivalCountdown(_0x21e6c1, _0x5cdaef);
-        if (!_0x21e6c1['destinationKnown'] && (_0x3946c1 = getMarchDestination(_0x5cdaef))) _0x21e6c1['buildingId'] = _0x3946c1['buildingId'] || '',
-          _0x21e6c1['position'] = _0x3946c1['position'],
-          _0x21e6c1['destinationKnown'] = !!(_0x21e6c1['buildingId'] || _0x21e6c1['position']);
-      }
-      else {
-        _0x1c24e7 = _0x5cdaef['curBuilding'],
-          _0x21e6c1['position'] = copyPosition(_0x5cdaef['position']) || copyPosition(_0x1c24e7 && _0x1c24e7['position']) || _0x21e6c1['position'],
-          _0x21e6c1['buildingId'] = _0x1c24e7 && _0x1c24e7['id'] || (_0x21e6c1['position'] && _0x21e6c1['position']['x'] + '_' + _0x21e6c1['position']['y']) || _0x21e6c1['buildingId'],
-          _0x21e6c1['destinationKnown'] = !!(_0x21e6c1['buildingId'] || _0x21e6c1['position']),
-          _0x21e6c1['waitingForTarget'] = false,
-          hideMarchCountdown(),
-          logInfo('锁定目标已到达目的建筑，准备立即开战:', _0x21e6c1['buildingId']);
-      }
-    }
-    if (isMarchState(_0x2f7ae7)) {
-      _0x21e6c1['waitingForTarget'] ? updateTargetArrivalCountdown(_0x21e6c1, _0x5cdaef) : updateMarchCountdown(_0x2f7ae7, _0x21e6c1['returning']);
-      requestAutoSpeedUp(_0x4ae6e8, _0x2f7ae7);
-      if (!_0x21e6c1['waitingForTarget'] && !_0x21e6c1['returning'] && _0x5cdaef && (!_0x5cdaef['curBuilding'] || _0x5cdaef['curBuilding']['id'] !== _0x21e6c1['buildingId']) && !samePosition(_0x5cdaef['position'], _0x21e6c1['position']) && !_0x21e6c1['targetLeft']) _0x21e6c1['targetLeft'] = true,
-        _0x21e6c1['targetLeft'] && _0x21e6c1['targetLeftNotified'] !== true && (_0x21e6c1['targetLeftNotified'] = true, logInfo('锁定目标已离开原建筑，到达后返回原建筑:', _0x21e6c1['buildingId']));
-      return;
-    }
-    hideMarchCountdown();
-    if (!_0x5cdaef) return;
-    if (!isIdleState(_0x2f7ae7)) return;
-    _0x2a4ae3 = _0x2f7ae7['curBuilding'],
-      _0x4aa8f8 = _0x2a4ae3 && _0x2a4ae3['id'] === _0x21e6c1['buildingId'] || samePosition(_0x2f7ae7['position'], _0x21e6c1['position']);
-    _0x33f6d1 = !!(_0x2a4ae3 && _0x2a4ae3['id'] === _0x21e6c1['buildingId'] || samePosition(_0x2f7ae7['position'], _0x21e6c1['position'])),
-      _0x4b3a2f = !!(_0x2f7ae7['curBuilding'] && _0x2f7ae7['curBuilding']['id'] === _0x21e6c1['originBuildingId'] || samePosition(_0x2f7ae7['position'], _0x21e6c1['originPosition'])),
-      _0x2b9c67 = !!(_0x5cdaef['curBuilding'] && _0x5cdaef['curBuilding']['id'] === _0x21e6c1['buildingId'] || samePosition(_0x5cdaef['position'], _0x21e6c1['position']));
-    if (_0x21e6c1['waitingForTarget']) {
-      if (!_0x21e6c1['destinationKnown'] || _0x33f6d1) return;
-      if (_0x138f93 - (_0x21e6c1['lastActionAt'] || 0) < 1200 || !_0x21e6c1['position'] || typeof _0x4ae6e8['sendStartMarch'] !== 'function') return;
-      if (_0x4ae6e8['sendStartMarch'](_0x21e6c1['position'])) _0x21e6c1['lastActionAt'] = _0x138f93,
-        logInfo('前往目标行军目的建筑并等待:', _0x21e6c1['buildingId']);
-      return;
-    }
-    if (_0x21e6c1['targetLeft']) {
-      if (_0x33f6d1 && _0x2a4ae3) {
-        var _stillInQueue = findTargetInBuildingQueues(_0x2a4ae3, _0x21e6c1['targetId']);
-        if (_stillInQueue) {
-          logInfo('锁定目标仍在当前建筑队列中，纠正离开状态，恢复开战。');
-          _0x21e6c1['targetLeft'] = false;
-          _0x21e6c1['targetLeftNotified'] = false;
-          _0x21e6c1['returning'] = false;
-        }
-      }
-      if (_0x21e6c1['targetLeft']) {
-        if (_0x33f6d1 && promoteQueuedTargetAtCurrentBuilding(_0x2f7ae7, false, false)) return logInfo('离开的锁定目标已跳过，继续处理当前建筑内的其他锁定目标。'), runLockedAttack();
-        if (_0x33f6d1 && !_0x21e6c1['returning']) {
-          if (_0x21e6c1['originPosition'] && typeof _0x4ae6e8['sendStartMarch'] === 'function' && _0x138f93 - (_0x21e6c1['lastActionAt'] || 0) >= 1200 && _0x4ae6e8['sendStartMarch'](_0x21e6c1['originPosition'])) _0x21e6c1['returning'] = true,
-            _0x21e6c1['lastActionAt'] = _0x138f93,
-            logInfo('已到达空建筑，立即返回原建筑:', _0x21e6c1['originBuildingId']);
-          return;
-        }
-        if (_0x21e6c1['returning'] && _0x4b3a2f) return logInfo('已返回原建筑，解除锁定。'), clearLockedTarget();
-        if (_0x21e6c1['returning']) return;
-      }
-    }
-    if (_0x138f93 - (_0x21e6c1['lastActionAt'] || 0) < 1200) return;
-    if (_0x33f6d1) {
-      _0x2b92fd = findTargetInBuildingQueues(_0x2a4ae3, _0x21e6c1['targetId']),
-        _0x1afc6c = _0x2b92fd ? null : findTargetBattle(_0x2a4ae3, _0x21e6c1['targetId']);
-      if (!_0x2b92fd && (_0x1afc6c || isCombatState(_0x5cdaef)) && promoteQueuedTargetAtCurrentBuilding(_0x2f7ae7, true, true)) return logInfo('当前锁定目标已被其他玩家攻击，优先处理下一个未开战目标。'), runLockedAttack();
-      if (!_0x2b92fd && _0x1afc6c) return updateThirdPartyBattleCountdown(_0x1afc6c, _0x21e6c1);
-      if (_0x2b92fd) _0x5cdaef = _0x2b92fd['player'] || _0x5cdaef,
-        _0x21e6c1['waitingBattleKey'] = '';
-      if (!_0x2b92fd && !isIdleState(_0x5cdaef) || Number(_0x5cdaef['legionId']) === Number(_0x2f7ae7['legionId'])) return;
-      if (_0x4ae6e8['sendStartBattle'](_0x21e6c1['targetId'])) _0x21e6c1['engaged'] = true,
-        _0x21e6c1['engagedAt'] = _0x138f93,
-        _0x21e6c1['combatSeen'] = false,
-        _0x21e6c1['lastActionAt'] = _0x138f93,
-        logInfo('已到达锁定建筑，开始攻击:', _0x21e6c1['targetId']);
-      return;
-    }
-    if (_0x5cdaef && !_0x2b9c67) _0x21e6c1['targetLeft'] = true;
-    if (!_0x21e6c1['position'] || typeof _0x4ae6e8['sendStartMarch'] !== 'function') return;
-    if (_0x4ae6e8['sendStartMarch'](_0x21e6c1['position'])) _0x21e6c1['lastActionAt'] = _0x138f93,
-      logInfo('前往锁定建筑:', _0x21e6c1['buildingId']);
-  }
-  function storeTeamSummary(_0x2cb221,
-    _0x90b810) {
-    var _0x1bd41b = getPlayerCacheKey(_0x2cb221);
-    if (!state["destroyed"] && _0x1bd41b && _0x90b810) {
-      _0x90b810['cachedAt'] = Date["now"](),
-        _0x90b810["playerStateKey"] = getPlayerStateKey(_0x2cb221),
-        state["teamCache"]['delete'](_0x1bd41b),
-        state["teamCache"]['set'](_0x1bd41b,
-          _0x90b810);
-      while (state["teamCache"]['size'] > CACHE_LIMIT) {
-        state["teamCache"]['delete'](state["teamCache"]["keys"]()["next"]()['value']);
-      }
-    }
-  }
-  function getCachedFormation(_0x411cff) {
-    var _0x5d8101 = getPlayerCacheKey(_0x411cff);
-    return _0x5d8101 ? state["formationCache"]["get"](_0x5d8101) || null : null;
-  }
-  function storeFormationCache(_0x3b6bf7,
-    _0x2d55e1) {
-    var _0x3c849f = getPlayerCacheKey(_0x3b6bf7);
-    if (state["destroyed"] || !_0x3c849f || !_0x2d55e1 || !_0x2d55e1["label"] || _0x2d55e1['label'] === '未知' || _0x2d55e1['label'] === '空阵') return;
-    state["formationCache"]["delete"](_0x3c849f),
-      state["formationCache"]["set"](_0x3c849f,
-        {
-          'label': _0x2d55e1["label"],
-          'heroIds': (_0x2d55e1['heroIds'] || [])['slice'](),
-          'heroNames': (_0x2d55e1["heroNames"] || [])["slice"](),
-          'rosterFingerprint': _0x2d55e1["rosterFingerprint"] || '',
-          'identifiedAt': Date["now"]()
-        });
-    while (state["formationCache"]['size'] > CACHE_LIMIT) {
-      state["formationCache"]["delete"](state["formationCache"]['keys']()['next']()['value']);
-    }
-  }
-  function recognizeFormationFromTeam(_0x2d23b9,
-    _0x19ad67) {
-    var _0x276264 = getCachedFormation(_0x2d23b9),
-      _0x347a5b = buildRosterFingerprint(_0x19ad67),
-      _0x5d5bbc = !!(_0x276264 && (!_0x347a5b || _0x276264["rosterFingerprint"] && _0x276264["rosterFingerprint"] === _0x347a5b));
-    if (_0x5d5bbc) return state["formationCacheHits"] += 1,
-      Promise['resolve'](buildTeamSummary(_0x2d23b9,
-        _0x19ad67,
-        _0x276264));
-    if (!_0x19ad67['length']) return Promise['resolve'](buildTeamSummary(_0x2d23b9,
-      _0x19ad67,
-      _0x276264));
-    return state["formationRecognitionRuns"] += 1,
-      resolveTeamAvatarImages(_0x19ad67)['then'](function (_0x15b8e1) {
-        var _0x1b9070 = buildTeamSummary(_0x2d23b9,
-          _0x15b8e1 || _0x19ad67);
-        return _0x1b9070["rosterFingerprint"] = _0x347a5b,
-          storeFormationCache(_0x2d23b9,
-            _0x1b9070),
-          _0x1b9070;
-      })["catch"](function (_0x21f4e0) {
-        logWarn("未知头像识别流程失败:",
-          _0x21f4e0 && _0x21f4e0['message'] || _0x21f4e0);
-        var _0x71b6c1 = buildTeamSummary(_0x2d23b9,
-          _0x19ad67,
-          _0x276264);
-        _0x71b6c1["rosterFingerprint"] = _0x347a5b;
-        if (!_0x276264) storeFormationCache(_0x2d23b9,
-          _0x71b6c1);
-        return _0x71b6c1;
-      });
-  }
-  function fetchTeamSummaryFromServer(_0x152822,
-    _0x11ffc7) {
-    var _0x1d938b = getLegionWarModule();
-    if (!_0x1d938b || typeof _0x1d938b["sendGetTeamInfo"] !== 'function') return Promise['resolve'](null);
-    return new Promise(function (_0x500e3b) {
-      var _0x335d31 = false,
-        _0x1ed237 = 0,
-        _0x2f3d68 = null,
-        _0x16a651 = false;
-      function detachListener() {
-        _0x16a651 && _0x2f3d68 && _0x1d938b['network'] && typeof _0x1d938b['network']["off"] === "function" && _0x1d938b['network']['off'](_0x2f3d68,
-          onResponse,
-          state),
-          _0x16a651 = false;
-      }
-      function cleanup() {
-        if (_0x1ed237) window["clearTimeout"](_0x1ed237);
-        _0x1ed237 = 0,
-          detachListener(),
-          state["activeRequests"]["delete"](cancel);
-      }
-      function finish(_0x4352f6) {
-        if (_0x335d31) return;
-        _0x335d31 = true,
-          cleanup();
-        if (!Array["isArray"](_0x4352f6)) {
-          _0x500e3b(null);
-          return;
-        }
-        recognizeFormationFromTeam(_0x152822,
-          _0x4352f6)['then'](_0x500e3b);
-      }
-      function cancel() {
-        finish(null);
-      }
-      function onResponse(_0x243dd1) {
-        var _0x2a5f3a = parseTeamResponse(_0x243dd1);
-        if (Array['isArray'](_0x2a5f3a)) finish(_0x2a5f3a);
-      }
-      try {
-        var _0x31b4b7 = gameRequire('data-index');
-        _0x2f3d68 = _0x31b4b7['RESPS'] && _0x31b4b7["RESPS"]["War_GetTeamInfoResp"],
-          _0x2f3d68 && _0x1d938b['network'] && typeof _0x1d938b["network"]['on'] === 'function' && (_0x1d938b['network']['on'](_0x2f3d68,
-            onResponse,
-            state),
-            _0x16a651 = true);
-      }
-      catch (_0x9a3905) {
-      }
-      state["activeRequests"]["add"](cancel),
-        _0x1ed237 = window["setTimeout"](function () {
-          finish(null);
-        },
-          3500);
-      try {
-        var _0x44aaf1 = _0x1d938b["sendGetTeamInfo"](_0x11ffc7);
-        if (_0x44aaf1 && typeof _0x44aaf1['then'] === 'function') detachListener(),
-          _0x44aaf1["then"](function (_0x4bae90) {
-            var _0x2f60e1 = parseTeamResponse(_0x4bae90);
-            finish(Array['isArray'](_0x2f60e1) ? _0x2f60e1 : null);
-          })['catch'](function (_0x2cfb55) {
-            logWarn('阵容读取失败:',
-              getPlayerName(_0x152822) || _0x11ffc7,
-              _0x2cfb55 && _0x2cfb55['message'] || _0x2cfb55),
-              finish(null);
-          });
-        else {
-          if (_0x44aaf1) {
-            var _0xb4f577 = parseTeamResponse(_0x44aaf1);
-            finish(Array["isArray"](_0xb4f577) ? _0xb4f577 : null);
-          }
-        }
-      }
-      catch (_0xb68dd3) {
-        logWarn("阵容请求异常:",
-          getPlayerName(_0x152822) || _0x11ffc7,
-          _0xb68dd3 && _0xb68dd3['message'] || _0xb68dd3),
-          finish(null);
-        return;
-      }
-    });
-  }
-  function requestTeamSummary(_0x4cbac5,
-    _0x43ee13) {
-    var _0x5a46bf = getPlayerCacheKey(_0x4cbac5),
-      _0x1ddf74 = getRoleCodeId(_0x4cbac5),
-      _0x5e5cae = getCachedTeamSummary(_0x4cbac5),
-      _0x4da3cb = _0x11e078(_0x4cbac5),
-      _0x1bf4dc,
-      _0x32e2c1 = Date['now']();
-    if (_0x5e5cae) {
-      if (_0x43ee13) _0x43ee13(_0x5e5cae);
-      return Promise['resolve'](_0x5e5cae);
-    }
-    if (!_0x5a46bf || !_0x1ddf74) return Promise["resolve"](null);
-    if (state['requestCooldown']['has'](_0x5a46bf) && _0x32e2c1 - state['requestCooldown']['get'](_0x5a46bf) < 60000) return Promise['resolve'](null);
-    if (state['pending']["has"](_0x5a46bf)) return state["pending"]['get'](_0x5a46bf)['then'](function (_0x38443a) {
-      if (!state["destroyed"] && _0x43ee13 && _0x38443a) _0x43ee13(_0x38443a);
-      return _0x38443a;
-    });
-    if (_0x4da3cb && _0x4da3cb['length']) return _0x1bf4dc = recognizeFormationFromTeam(_0x4cbac5,
-      _0x4da3cb)["then"](function (_0x3399a7) {
-        state["pending"]["delete"](_0x5a46bf);
-        if (state["destroyed"]) return null;
-        if (_0x3399a7) storeTeamSummary(_0x4cbac5,
-          _0x3399a7);
-        if (_0x43ee13 && _0x3399a7) _0x43ee13(_0x3399a7);
-        return _0x3399a7;
-      },
-        function (_0x130c5b) {
-          state['pending']["delete"](_0x5a46bf);
-          throw _0x130c5b;
-        }),
-      state["pending"]['set'](_0x5a46bf,
-        _0x1bf4dc),
-      _0x1bf4dc;
-    state['requestCooldown']['set'](_0x5a46bf, _0x32e2c1),
-      _0x1bf4dc = state["requestChain"]['catch'](function () {
-        return null;
-      })["then"](function () {
-        if (state["destroyed"]) return null;
-        return fetchTeamSummaryFromServer(_0x4cbac5,
-          _0x1ddf74);
-      })['then'](function (_0xf33e09) {
-        state['pending']["delete"](_0x5a46bf);
-        if (state["destroyed"]) return null;
-        if (_0xf33e09) storeTeamSummary(_0x4cbac5,
-          _0xf33e09);
-        _0xf33e09 && state['requestCooldown']['delete'](_0x5a46bf);
-        if (_0x43ee13 && _0xf33e09) _0x43ee13(_0xf33e09);
-        return _0xf33e09;
-      },
-        function (_0x1fa86f) {
-          state['pending']['delete'](_0x5a46bf);
-          throw _0x1fa86f;
-        }),
-      state["pending"]['set'](_0x5a46bf,
-        _0x1bf4dc),
-      state["requestChain"] = _0x1bf4dc["catch"](function () {
-        return null;
-      }),
-      _0x1bf4dc;
-  }
-  function isSaltQueueOverlay(_0x5a8e31) {
-    return !!(_0x5a8e31 && (_0x5a8e31["name"] === "saltQueueSummary" || _0x5a8e31['name'] === "saltQueueRoleId" || _0x5a8e31['name'] === "saltQueueRemaining" || _0x5a8e31['name'] === "saltQueueLockBox" || _0x5a8e31['name'] === "saltQueueLockCheck" || _0x5a8e31['name'] === "saltQueueLockText"));
-  }
-  function getChildren(_0x5907e7) {
-    var _0x1be905 = [],
-      _0x56ec61;
-    if (!_0x5907e7) return _0x1be905;
-    if (typeof _0x5907e7["numChildren"] === 'number' && typeof _0x5907e7["getChildAt"] === 'function') for (_0x56ec61 = 0;
-      _0x56ec61 < _0x5907e7["numChildren"];
-      _0x56ec61++) {
-      try {
-        _0x1be905['push'](_0x5907e7["getChildAt"](_0x56ec61));
-      }
-      catch (_0x506c01) {
-      }
-    }
-    if (Array["isArray"](_0x5907e7["_children"])) _0x1be905 = _0x1be905["concat"](_0x5907e7["_children"]);
-    else _0x5907e7["_children"] && Array['isArray'](_0x5907e7["_children"]["_items"]) && (_0x1be905 = _0x1be905['concat'](_0x5907e7["_children"]['_items']));
-    return _0x1be905['filter'](function (_0x374be5,
-      _0x146c49) {
-      return _0x374be5 && _0x1be905['indexOf'](_0x374be5) === _0x146c49;
-    });
-  }
-  function someDescendant(_0x214971,
-    _0x3caef2,
-    _0x5ceae9,
-    _0x1f3337) {
-    if (!_0x214971 || _0x5ceae9 > 5) return false;
-    _0x1f3337 = _0x1f3337 || [];
-    if (_0x1f3337["indexOf"](_0x214971) >= 0) return false;
-    return _0x1f3337["push"](_0x214971),
-      getChildren(_0x214971)['some'](function (_0x89de16) {
-        if (_0x3caef2(_0x89de16)) return true;
-        return someDescendant(_0x89de16,
-          _0x3caef2,
-          _0x5ceae9 + 1,
-          _0x1f3337);
-      });
-  }
-  function isTextNode(_0x4489e2) {
-    return !!(_0x4489e2 && !isSaltQueueOverlay(_0x4489e2) && typeof _0x4489e2['text'] === "string");
-  }
-  function findTextNodeByProps(_0x7f117f,
-    _0x2e961c) {
-    var _0x31133a;
-    for (_0x31133a = 0;
-      _0x31133a < _0x2e961c['length'];
-      _0x31133a++) {
-      if (isTextNode(_0x7f117f && _0x7f117f[_0x2e961c[_0x31133a]])) return _0x7f117f[_0x2e961c[_0x31133a]];
-    }
-    return null;
-  }
-  function findStatusTextNode(_0xdefbee) {
-    var _0x5dd785 = findTextNodeByProps(_0xdefbee,
-      ["m_txtStatus",
-        "m_txtState",
-        'm_state',
-        'm_status',
-        "m_txtAction",
-        "m_txtDesc"]),
-      _0x3bcaa6 = _0x5dd785;
-    if (_0x3bcaa6) return _0x3bcaa6;
-    return someDescendant(_0xdefbee,
-      function (_0x4340eb) {
-        var _0x4f1dff;
-        if (!isTextNode(_0x4340eb)) return false;
-        _0x4f1dff = String(_0x4340eb["text"] || '');
-        if (_0x4f1dff["indexOf"]('驻守') >= 0 || _0x4f1dff['indexOf']('驻扎') >= 0 || _0x4f1dff['indexOf']('驻防') >= 0 || _0x4f1dff['indexOf']('防守') >= 0 || _0x4f1dff['indexOf']('交战') >= 0 || _0x4f1dff['indexOf']('行军') >= 0 || _0x4f1dff["indexOf"]('返回') >= 0) return _0x3bcaa6 = _0x4340eb,
-          true;
-        return false;
-      },
-      0),
-      _0x3bcaa6;
-  }
-  function findStrengthTextNode(_0x4d2442) {
-    var _0xdef8df = findTextNodeByProps(_0x4d2442,
-      ["m_strength",
-        "m_txtStrength",
-        "m_txtEnergy",
-        "m_energy",
-        "m_txtSpirit",
-        "m_spirit"]),
-      _0x5e1b82 = _0xdef8df;
-    if (_0x5e1b82) return _0x5e1b82;
-    return _0x5e1b82 = null,
-      someDescendant(_0x4d2442,
-        function (_0x315b1a) {
-          if (!isTextNode(_0x315b1a)) return false;
-          if (String(_0x315b1a['text'] || '')['indexOf']('精力') >= 0) return _0x5e1b82 = _0x315b1a,
-            true;
-          return false;
-        },
-        0),
-      _0x5e1b82;
-  }
-  function findRoleIdTextNode(_0x9b1180) {
-    var _0x309beb = null;
-    return someDescendant(_0x9b1180,
-      function (_0x51f3b6) {
-        if (!isTextNode(_0x51f3b6)) return false;
-        if (/^ID[:：]\s*\d+$/i["test"](String(_0x51f3b6['text'] || '')['trim']())) return _0x309beb = _0x51f3b6,
-          true;
-        return false;
-      },
-      0),
-      _0x309beb;
-  }
-  function _0xe649a7(_0x2423af,
-    _0x5931cf) {
-    var _0xe0eaf7 = getPlayerName(_0x5931cf),
-      _0x23704e = findTextNodeByProps(_0x2423af,
-        ["m_txtName",
-          "m_name",
-          "m_txtPlayerName",
-          "m_playerName",
-          "m_txtRoleName",
-          "m_roleName"]),
-      _0x24f8ea = _0x23704e;
-    if (_0x24f8ea) return _0x24f8ea;
-    if (!_0xe0eaf7) return null;
-    return someDescendant(_0x2423af,
-      function (_0x3d143d) {
-        var _0xd1509a;
-        if (!isTextNode(_0x3d143d)) return false;
-        _0xd1509a = String(_0x3d143d["text"] || '');
-        if (_0xd1509a && (_0xd1509a === _0xe0eaf7 || _0xd1509a['indexOf'](_0xe0eaf7) >= 0 || _0xe0eaf7["indexOf"](_0xd1509a["replace"](/\.\.\.$/,
-          '')) >= 0)) return _0x24f8ea = _0x3d143d,
-            true;
-        return false;
-      },
-      0),
-      _0x24f8ea;
-  }
-  function _0x44dc09(_0x539d05,
-    _0x32673a) {
-    if (!_0x32673a) return;
-    _0x539d05 && ["font",
-      'fontSize',
-      'color',
-      'bold',
-      "italic",
-      "underline",
-      "stroke",
-      "strokeColor",
-      "shadowColor",
-      "align",
-      "verticalAlign",
-      'leading',
-      "letterSpacing"]['forEach'](function (_0x193a59) {
-        if (_0x539d05[_0x193a59] !== undefined) try {
-          _0x32673a[_0x193a59] = _0x539d05[_0x193a59];
-        }
-          catch (_0xe3439d) {
-          }
-      });
-    if (!_0x32673a['fontSize']) _0x32673a['fontSize'] = 15;
-    if (!_0x32673a['color']) _0x32673a["color"] = '#d87532';
-  }
-  function _0x502487(_0x3912a4,
-    _0x577c36,
-    _0x1210d5) {
-    if (!_0x3912a4) return;
-    if (typeof _0x3912a4["setSize"] === "function") _0x3912a4["setSize"](_0x577c36,
-      _0x1210d5);
-    else _0x3912a4['width'] = _0x577c36,
-      _0x3912a4['height'] = _0x1210d5;
-  }
-  function _0x15c23b(_0x4532c9,
-    _0x3a78f5,
-    _0x178cac) {
-    if (!_0x4532c9) return;
-    if (typeof _0x4532c9["setPosition"] === 'function') _0x4532c9["setPosition"](_0x3a78f5,
-      _0x178cac);
-    else _0x4532c9['x'] = _0x3a78f5,
-      _0x4532c9['y'] = _0x178cac;
-  }
-  function _0x26058d(_0x46a042) {
-    var _0x125cae = String(_0x46a042 && _0x46a042["text"] || ''),
-      _0x7d4dcc = Number(_0x46a042 && _0x46a042["fontSize"] || 15);
-    return Math["max"](8,
-      Math['ceil'](_0x125cae['length'] * _0x7d4dcc * 0.82));
-  }
-  function _0x5a172a(_0x464fbf,
-    _0x252344,
-    _0x28e3cc,
-    _0x37746e) {
-    var _0x20ede0 = getFgui();
-    if (!_0x464fbf || !_0x20ede0 || !_0x20ede0["GTextField"]) return null;
-    if (_0x464fbf[_0x252344]) {
-      if (state["items"]["indexOf"](_0x464fbf) < 0) state['items']['push'](_0x464fbf);
-      return _0x464fbf[_0x252344]["touchable"] = !!_0x37746e,
-        _0x464fbf[_0x252344]["singleLine"] = true,
-        _0x464fbf[_0x252344];
-    }
-    var _0x5bc325 = new _0x20ede0[("GTextFie") + 'ld']();
-    _0x5bc325["name"] = _0x28e3cc,
-      _0x5bc325["touchable"] = !!_0x37746e,
-      _0x5bc325['autoSize'] = _0x20ede0["AutoSizeType"] ? _0x20ede0["AutoSizeType"]["None"] : 0,
-      _0x5bc325["fontSize"] = 15,
-      _0x5bc325['color'] = "#d87532",
-      _0x5bc325['bold'] = false,
-      _0x5bc325['stroke'] = 0,
-      _0x5bc325["singleLine"] = true,
-      _0x5bc325["text"] = '',
-      _0x502487(_0x5bc325,
-        120,
-        22),
-      _0x464fbf['addChild'](_0x5bc325),
-      _0x464fbf[_0x252344] = _0x5bc325;
-    if (state["items"]["indexOf"](_0x464fbf) < 0) state["items"]['push'](_0x464fbf);
-    return _0x5bc325;
-  }
-  function _0x374734(_0x97bb9c,
-    _0x43b150,
-    _0x12304b) {
-    if (!_0x97bb9c || !_0x43b150) return;
-    var _0x4ca348 = findStrengthTextNode(_0x97bb9c),
-      _0x42f029 = findStatusTextNode(_0x97bb9c),
-      _0x3510b7 = _0xe649a7(_0x97bb9c,
-        _0x12304b),
-      _0x4c3d7c = _0x4ca348 || _0x42f029 || _0x3510b7,
-      _0x4b4402 = _0x4c3d7c && typeof _0x4c3d7c['x'] === 'number' ? _0x4c3d7c['x'] : 118,
-      _0x3b6094 = _0x4c3d7c && typeof _0x4c3d7c['y'] === 'number' ? _0x4c3d7c['y'] : 28,
-      _0x4d253f = _0x3b6094,
-      _0x332cab = _0x97bb9c["m_btnFight"] && typeof _0x97bb9c["m_btnFight"]['x'] === "number" ? _0x97bb9c["m_btnFight"]['x'] : (_0x97bb9c["width"] || 520) - 8,
-      _0x12c34b,
-      _0x3d5a83,
-      _0x24ab77,
-      _0x5acff8 = _0x97bb9c['__saltQueueLockButton'],
-      _0x429f36 = _0x97bb9c['m_btnFight'],
-      _0x30cf13,
-      _0x43cd55,
-      _0x2ea751;
-    _0x44dc09(_0x4ca348 || _0x42f029 || _0x3510b7,
-      _0x43b150),
-      _0x43b150['bold'] = false;
-    if (_0x5acff8 && _0x429f36 && _0x5acff8['visible'] !== false) {
-      _0x30cf13 = Math['min'](Number(_0x5acff8['x']) || 0, Number(_0x429f36['x']) || 0),
-        _0x43cd55 = Math['max']((Number(_0x5acff8['x']) || 0) + (Number(_0x5acff8['width']) || 120), (Number(_0x429f36['x']) || 0) + (Number(_0x429f36['width']) || 120)),
-        _0x2ea751 = Math['max'](0, Math['min'](Number(_0x5acff8['y']) || 20, Number(_0x429f36['y']) || 20) - 24),
-        _0x43b150['fontSize'] = Math['max'](13, Number(_0x43b150['fontSize']) || 15),
-        _0x43b150['align'] = 'center',
-        _0x43b150['verticalAlign'] = 'middle',
-        _0x43b150['sortingOrder'] = 9998,
-        _0x502487(_0x43b150, Math['max'](120, _0x43cd55 - _0x30cf13), 22),
-        _0x15c23b(_0x43b150, _0x30cf13, _0x2ea751);
-      return;
-    }
-    if (_0x4ca348) _0x4b4402 = _0x4ca348['x'] + _0x26058d(_0x4ca348) + 8,
-      _0x4d253f = _0x4ca348['y'];
-    else {
-      if (_0x42f029) _0x4b4402 = _0x42f029['x'] + _0x26058d(_0x42f029) + 8,
-        _0x4d253f = _0x42f029['y'];
-      else _0x3510b7 && (_0x4b4402 = Math["max"](250,
-        Math['min'](_0x332cab - 118,
-          _0x3510b7['x'] + _0x26058d(_0x3510b7) + 10)),
-        _0x4d253f = _0x3510b7['y']);
-    }
-    _0x24ab77 = _0x332cab - 8,
-      _0x4b4402 = Math['min'](_0x4b4402,
-        _0x24ab77 - 1),
-      _0x3d5a83 = _0x26058d(_0x43b150) + 4,
-      _0x12c34b = Math["max"](1,
-        Math["min"](_0x3d5a83,
-          _0x24ab77 - _0x4b4402)),
-      _0x502487(_0x43b150,
-        _0x12c34b,
-        Number(_0x4ca348 && _0x4ca348['height']) || Math["max"](18,
-          (_0x43b150["fontSize"] || 15) + 5)),
-      _0x15c23b(_0x43b150,
-        _0x4b4402,
-        _0x4d253f);
-  }
-  function _0x3308c0(_0x556353,
-    _0x5e688f) {
-    if (!_0x556353 || !_0x5e688f) return false;
-    var _0x4c69dd = findStatusTextNode(_0x556353),
-      _0x400ea0 = _0x556353["m_btnFight"] && typeof _0x556353["m_btnFight"]['x'] === "number" ? _0x556353["m_btnFight"]['x'] : (_0x556353["width"] || 520) - 8,
-      _0x124f0c,
-      _0x4850c2;
-    if (!_0x4c69dd) return false;
-    _0x44dc09(_0x4c69dd,
-      _0x5e688f),
-      _0x124f0c = _0x4c69dd['x'] + _0x26058d(_0x4c69dd) + 6,
-      _0x4850c2 = _0x26058d(_0x5e688f) + 4;
-    if (_0x124f0c + _0x4850c2 > _0x400ea0 - 8) _0x124f0c = Math['max'](_0x4c69dd['x'],
-      _0x400ea0 - _0x4850c2 - 8);
-    return _0x502487(_0x5e688f,
-      _0x4850c2,
-      Number(_0x4c69dd['height']) || Math['max'](18,
-        (_0x5e688f['fontSize'] || 15) + 5)),
-      _0x15c23b(_0x5e688f,
-        _0x124f0c,
-        _0x4c69dd['y']),
-      true;
-  }
-  function _0x7158a9(_0x7f821a,
-    _0x110937,
-    _0x324b1d) {
-    if (!_0x7f821a || !_0x110937) return;
-    var _0x41ece7 = _0xe649a7(_0x7f821a,
-      _0x324b1d),
-      _0x2edb5e = findStrengthTextNode(_0x7f821a),
-      _0x6d122d = _0x2edb5e || _0x41ece7,
-      _0x54252c = _0x41ece7 || _0x2edb5e,
-      _0x520f7e;
-    _0x44dc09(_0x6d122d,
-      _0x110937),
-      _0x520f7e = Number(_0x6d122d && _0x6d122d["fontSize"] || _0x110937["fontSize"] || 15),
-      _0x110937['fontSize'] = Math['max'](10,
-        Math['min'](13,
-          _0x520f7e - 2)),
-      _0x110937['bold'] = false,
-      _0x502487(_0x110937,
-        90,
-        _0x110937['fontSize'] + 5),
-      _0x15c23b(_0x110937,
-        _0x54252c && typeof _0x54252c['x'] === 'number' ? _0x54252c['x'] : 105,
-        Math['max'](1,
-          (_0x41ece7 && typeof _0x41ece7['y'] === "number" ? _0x41ece7['y'] : 22) - _0x110937['fontSize'] - 2));
-  }
-  function _0x53b694(_0x1bc48b,
-    _0xe25b59,
-    _0x173317) {
-    var _0xa79e2b = _0x5a172a(_0x1bc48b,
-      "__saltQueueSummaryText",
-      "saltQueueSummary",
-      false);
-    if (!_0xa79e2b) return;
-    _0xa79e2b['text'] = '阵容:' + (_0x173317 && _0x173317["label"] || "识别中") + ' ' + (_0x173317 && _0x173317["total"] ? _0x173317['alive'] + '/' + _0x173317['total'] : '--/5'),
-      _0xa79e2b['visible'] = true,
-      _0xa79e2b["touchable"] = false,
-      _0x374734(_0x1bc48b,
-        _0xa79e2b,
-        _0xe25b59);
-  }
-  function _0x3583b5(_0x291d54,
-    _0x23a68f) {
-    var _0x296f0a = _0x5a172a(_0x291d54,
-      "__saltQueueRemainingText",
-      "saltQueueRemaining",
-      false);
-    if (!_0x296f0a) return;
-    _0x296f0a["text"] = _0x23a68f && _0x23a68f["total"] ? _0x23a68f['alive'] + '/' + _0x23a68f['total'] : '--/5',
-      _0x296f0a['visible'] = false,
-      _0x296f0a["touchable"] = false,
-      _0x296f0a["visible"] = _0x3308c0(_0x291d54,
-        _0x296f0a);
-  }
-  function _0x2a6e2e(_0x2469cd,
-    _0x42c27d) {
-    var _0xb94505 = getRoleCodeId(_0x42c27d),
-      _0x128ea1 = findRoleIdTextNode(_0x2469cd),
-      _0x49d3ad;
-    if (_0x128ea1 && _0x128ea1 !== _0x2469cd["__saltQueueRoleIdText"]) {
-      if (_0x2469cd["__saltQueueRoleIdText"]) _0x2469cd["__saltQueueRoleIdText"]["visible"] = false;
-      return;
-    }
-    _0x49d3ad = _0x5a172a(_0x2469cd,
-      "__saltQueueRoleIdText",
-      "saltQueueRoleId",
-      false);
-    if (!_0x49d3ad || !_0xb94505) {
-      if (_0x49d3ad) _0x49d3ad['visible'] = false;
-      return;
-    }
-    _0x49d3ad['text'] = 'ID:' + _0xb94505,
-      _0x49d3ad["visible"] = true,
-      _0x49d3ad["touchable"] = false,
-      _0x7158a9(_0x2469cd,
-        _0x49d3ad,
-        _0x42c27d);
-  }
-  function hideLockOverlay(_0x5727cc,
-    _0x47a978) {
-    var _0x866e47 = _0x5727cc && _0x5727cc["__saltQueueLockText"];
-    if (!_0x5727cc) return;
-    _0x5727cc["__saltQueueLockBoxText"] && (_0x5727cc["__saltQueueLockBoxText"]['visible'] = false,
-      _0x5727cc["__saltQueueLockBoxText"]["touchable"] = false),
-      _0x5727cc["__saltQueueLockCheckText"] && (_0x5727cc["__saltQueueLockCheckText"]['visible'] = false,
-        _0x5727cc["__saltQueueLockCheckText"]["touchable"] = false),
-      _0x866e47 && (_0x866e47["visible"] = false,
-        _0x866e47["touchable"] = false,
-        _0x866e47['text'] = '');
-  }
-  function hideSaltQueueOverlay(_0x10a817) {
-    if (!_0x10a817) return;
-    if (_0x10a817["__saltQueueSummaryText"]) _0x10a817["__saltQueueSummaryText"]['visible'] = false;
-    if (_0x10a817["__saltQueueRoleIdText"]) _0x10a817["__saltQueueRoleIdText"]['visible'] = false;
-    if (_0x10a817["__saltQueueRemainingText"]) _0x10a817["__saltQueueRemainingText"]['visible'] = false;
-    if (_0x10a817["__saltQueueMarchRemainText"]) _0x10a817["__saltQueueMarchRemainText"]['visible'] = false;
-    _0x10a817["__saltQueueLockBoxText"] && (_0x10a817["__saltQueueLockBoxText"]["visible"] = false,
-      _0x10a817["__saltQueueLockBoxText"]["touchable"] = false),
-      _0x10a817["__saltQueueLockCheckText"] && (_0x10a817["__saltQueueLockCheckText"]["visible"] = false,
-        _0x10a817["__saltQueueLockCheckText"]["touchable"] = false),
-      _0x10a817["__saltQueueLockText"] && (_0x10a817["__saltQueueLockText"]["visible"] = false,
-        _0x10a817["__saltQueueLockText"]["touchable"] = false);
-    _0x10a817["__saltQueueLockButton"] && (_0x10a817["__saltQueueLockButton"]["visible"] = false,
-      _0x10a817["__saltQueueLockButton"]["touchable"] = false);
-  }
-  function refreshItem(_0xabf784,
-    _0x7491d4) {
-    if (state["destroyed"] || !_0xabf784) return;
-    var _0x19d487;
-    if (!isPlayerLike(_0x7491d4)) {
-      hideSaltQueueOverlay(_0xabf784),
-        _0xabf784["__saltQueuePlayer"] = null;
-      return;
-    }
-    _0xabf784["__saltQueuePlayer"] = _0x7491d4,
-      ensureLockControl(_0xabf784),
-      updateItemMarchCountdown(_0xabf784, _0x7491d4),
-      _0x2a6e2e(_0xabf784,
-        _0x7491d4),
-      _0x19d487 = getCachedTeamSummary(_0x7491d4),
-      _0x19d487 ? (_0x53b694(_0xabf784,
-        _0x7491d4,
-        _0x19d487),
-        _0x3583b5(_0xabf784,
-          _0x19d487)) : (_0x53b694(_0xabf784,
-            _0x7491d4,
-            null),
-            _0x3583b5(_0xabf784,
-              null)),
-      updateLockControl(_0xabf784),
-      !_0x19d487 && window["setTimeout"](function () {
-        if (state["destroyed"] || _0xabf784["__saltQueuePlayer"] !== _0x7491d4) return;
-        requestTeamSummary(_0x7491d4,
-          function (_0xba0b46) {
-            if (state["destroyed"] || _0xabf784["__saltQueuePlayer"] !== _0x7491d4) return;
-            _0xba0b46 && (_0x53b694(_0xabf784,
-              _0x7491d4,
-              _0xba0b46),
-              _0x3583b5(_0xabf784,
-                _0xba0b46));
-          });
-      },
-        120);
-  }
-  function hideAllLockOverlays() {
-    clearAllLockedTargets();
-  }
-  function lockPlayer(_0x2d6a14,
-    _0x4a6a95) {
-    if (_0x2d6a14) toggleLockedTarget(_0x2d6a14, _0x4a6a95);
-    else clearAllLockedTargets();
-    return !!state["lockedTarget"];
-  }
-  function restoreOriginalMethod(_0x44ddcf,
-    _0x2d35df) {
-    var _0x2f54b1 = ["__saltQueueOriginal" + _0x2d35df,
-    "__saltOriginal" + _0x2d35df],
-      _0x2e823f = false;
-    _0x2f54b1['forEach'](function (_0x5348c1) {
-      if (typeof _0x44ddcf[_0x5348c1] === "function") {
-        _0x44ddcf[_0x2d35df] = _0x44ddcf[_0x5348c1];
-        try {
-          delete _0x44ddcf[_0x5348c1];
-        }
-        catch (_0x33d92c) {
-          _0x44ddcf[_0x5348c1] = null;
-        }
-        _0x2e823f = true;
-      }
-    });
-    try {
-      delete _0x44ddcf["__saltTagsPatchVersion"];
-    }
-    catch (_0x3b4854) {
-    }
-    try {
-      delete _0x44ddcf["__saltTagsPatched"];
-    }
-    catch (_0x114295) {
-    }
-    return _0x2e823f;
-  }
-  function updateAutoDigControl(_0x1b406a) {
-    var _0x2c477b = _0x1b406a && _0x1b406a['button'],
-      _0x3922ca = _0x1b406a && _0x1b406a['label'],
-      _0x59b7b2 = _0x1b406a && _0x1b406a['panel'],
-      _0x4160bf = _0x59b7b2 && _0x59b7b2['_building'],
-      _0x514812 = !!(_0x4160bf && _0x4160bf['inBuilding']),
-      _0x330b7e,
-      _0x11cc2e,
-      _0x44e323;
-    if (!_0x2c477b) return;
-    _0x2c477b['visible'] = _0x514812,
-      _0x2c477b['touchable'] = _0x514812,
-      _0x2c477b['enabled'] = true,
-      _0x3922ca && (_0x3922ca['visible'] = _0x514812),
-      _0x330b7e = _0x2c477b['m_isOpen'] || typeof _0x2c477b['getController'] === 'function' && _0x2c477b['getController']('isOpen'),
-      _0x11cc2e = _0x2c477b['m_isSlide'] || typeof _0x2c477b['getController'] === 'function' && _0x2c477b['getController']('isSlide'),
-      _0x330b7e && (_0x330b7e['selectedPage'] = String(!!state['autoDig'])),
-      _0x11cc2e && (_0x11cc2e['selectedPage'] = 'false'),
-      _0x44e323 = state['autoDig'] ? _0x2c477b['m_onSlide'] : _0x2c477b['m_offSlide'];
-    if (_0x2c477b['m_slide'] && _0x44e323 && isFinite(Number(_0x44e323['x']))) _0x2c477b['m_slide']['x'] = Number(_0x44e323['x']);
-  }
+
   function refreshAutoDigControls() {
-    state['autoDigControls']['forEach'](function (_0x2a57c0) {
-      updateAutoDigControl(_0x2a57c0);
+    state.autoDigControls.forEach(function (ctrl) {
+      updateAutoDigControl(ctrl);
     });
   }
-  function ensureAutoDigControl(_0x549d90) {
-    var _0x5cabda = getFgui(),
-      _0x27fb0d = _0x549d90 && _0x549d90['ui'] && _0x549d90['ui']['m_content'],
-      _0x2c0141 = _0x27fb0d && _0x27fb0d['m_btnAutoAttack'],
-      _0x54e836 = _0x27fb0d && _0x27fb0d['m_autoAttack'],
-      _0x1f3826 = _0x27fb0d && _0x27fb0d['__saltAutoDigButton'],
-      _0x54bf7f = _0x27fb0d && _0x27fb0d['__saltAutoDigLabel'],
-      _0x1c7733,
-      _0x289ca6,
-      _0x146ae0,
-      _0x446dc7,
-      _0x2dc6bb,
-      _0x168b47;
-    if (!_0x27fb0d || !_0x2c0141 || !_0x5cabda) return null;
-    if (!_0x1f3826 && _0x5cabda['UIPackage']) {
+
+  function ensureAutoDigControl(panel) {
+    var fg = getFgui();
+    var contentPane = panel && panel.ui && panel.ui.m_content;
+    var origBtn = contentPane && contentPane.m_btnAutoAttack;
+    var origLabel = contentPane && contentPane.m_autoAttack;
+    var digBtn = contentPane && contentPane.__saltAutoDigButton;
+    var digLabel = contentPane && contentPane.__saltAutoDigLabel;
+
+    if (!contentPane || !origBtn || !fg) return null;
+
+    if (!digBtn && fg.UIPackage) {
       try {
-        _0x1c7733 = _0x2c0141['resourceURL'],
-          _0x1f3826 = _0x1c7733 && _0x5cabda['UIPackage']['createObjectFromURL'](_0x1c7733);
+        var resUrl = origBtn.resourceURL;
+        digBtn = resUrl && fg.UIPackage.createObjectFromURL(resUrl);
+      } catch (e) {
+        digBtn = null;
       }
-      catch (_0x5958ca) {
-        _0x1f3826 = null;
-      }
-      if (_0x1f3826) {
-        _0x1f3826['name'] = 'saltAutoDigButton',
-          _0x27fb0d['addChild'](_0x1f3826),
-          _0x27fb0d['__saltAutoDigButton'] = _0x1f3826;
+      if (digBtn) {
+        digBtn.name = 'saltAutoDigButton';
+        contentPane.addChild(digBtn);
+        contentPane.__saltAutoDigButton = digBtn;
       }
     }
-    if (!_0x1f3826) return null;
-    if (!_0x54bf7f && _0x5cabda['GTextField']) {
+    if (!digBtn) return null;
+
+    if (!digLabel && fg.GTextField) {
       try {
-        _0x54bf7f = new _0x5cabda['GTextField']();
+        digLabel = new fg.GTextField();
+      } catch (e) {
+        digLabel = null;
       }
-      catch (_0x583602) {
-        _0x54bf7f = null;
-      }
-      if (_0x54bf7f) {
-        _0x54bf7f['name'] = 'saltAutoDigLabel',
-          _0x54bf7f['text'] = '自动刨地',
-          _0x54bf7f['touchable'] = false,
-          _0x54bf7f['singleLine'] = true,
-          _0x54bf7f['autoSize'] = _0x5cabda['AutoSizeType'] ? _0x5cabda['AutoSizeType']['None'] : 0;
-        var sourceTf = _0x54e836;
-        if (sourceTf && !sourceTf['fontSize']) {
-          sourceTf = (sourceTf['title'] && sourceTf['title']['fontSize'] ? sourceTf['title'] : null)
-            || (sourceTf['getChild'] && (sourceTf['getChild']('title') || sourceTf['getChild']('text') || sourceTf['getChild']('label') || sourceTf['getChild']('m_title')))
-            || (sourceTf['_titleObject'])
-            || (sourceTf['m_title'])
-            || _0x54e836;
+      if (digLabel) {
+        digLabel.name = 'saltAutoDigLabel';
+        digLabel.text = '自动刨地';
+        digLabel.touchable = false;
+        digLabel.singleLine = true;
+        digLabel.autoSize = fg.AutoSizeType ? fg.AutoSizeType.None : 0;
+
+        var sourceTf = origLabel;
+        if (sourceTf && !sourceTf.fontSize) {
+          sourceTf = (sourceTf.title && sourceTf.title.fontSize ? sourceTf.title : null) ||
+            (sourceTf.getChild && (sourceTf.getChild('title') || sourceTf.getChild('text') || sourceTf.getChild('label') || sourceTf.getChild('m_title'))) ||
+            sourceTf._titleObject || sourceTf.m_title || origLabel;
         }
-        ['font', 'fontSize', 'color', 'bold', 'stroke', 'strokeColor', 'align', 'verticalAlign']['forEach'](function (_0x30aef7) {
-          if (sourceTf && sourceTf[_0x30aef7] !== undefined) _0x54bf7f[_0x30aef7] = sourceTf[_0x30aef7];
+
+        ['font', 'fontSize', 'color', 'bold', 'stroke', 'strokeColor', 'align', 'verticalAlign'].forEach(function (prop) {
+          if (sourceTf && sourceTf[prop] !== undefined) digLabel[prop] = sourceTf[prop];
         });
-        _0x54bf7f['fontSize'] = 18;
-        if (!_0x54bf7f['color'] || _0x54bf7f['color'] === '#ffffff' || _0x54bf7f['color'] === 0xffffff) {
-          _0x54bf7f['color'] = (sourceTf && sourceTf['color'] && sourceTf['color'] !== '#ffffff' && sourceTf['color'] !== 0xffffff) ? sourceTf['color'] : '#682a10';
+        digLabel.fontSize = 18;
+        if (!digLabel.color || digLabel.color === '#ffffff' || digLabel.color === 0xffffff) {
+          digLabel.color = (sourceTf && sourceTf.color && sourceTf.color !== '#ffffff' && sourceTf.color !== 0xffffff) ? sourceTf.color : '#682a10';
         }
-        _0x54bf7f['bold'] = true;
-        _0x54bf7f['align'] = 'left';
-        _0x54bf7f['verticalAlign'] = 'middle';
-        _0x27fb0d['addChild'](_0x54bf7f);
-        _0x27fb0d['__saltAutoDigLabel'] = _0x54bf7f;
+        digLabel.bold = true;
+        digLabel.align = 'left';
+        digLabel.verticalAlign = 'middle';
+        contentPane.addChild(digLabel);
+        contentPane.__saltAutoDigLabel = digLabel;
       }
     }
-    var btnW = Number(_0x2c0141['width']) || 60;
-    var btnH = Number(_0x2c0141['height']) || 32;
-    var btnY = Number(_0x2c0141['y']) || 0;
+
+    var btnW = Number(origBtn.width) || 60;
+    var btnH = Number(origBtn.height) || 32;
+    var btnY = Number(origBtn.y) || 0;
     var lblW = 76;
-    var lblH = Math.max(28, Number(_0x54e836 && _0x54e836['height']) || 32);
-    var lblY = isFinite(Number(_0x54e836 && _0x54e836['y'])) ? Number(_0x54e836['y']) : btnY;
-    var containerW = Number(_0x27fb0d['width']) || 720;
+    var lblH = Math.max(28, Number(origLabel && origLabel.height) || 32);
+    var lblY = isFinite(Number(origLabel && origLabel.y)) ? Number(origLabel.y) : btnY;
+    var containerW = Number(contentPane.width) || 720;
     var gap = 6;
     var groupW = btnW + gap + lblW;
 
-    var origLeft = Math.min(Number(_0x2c0141['x']) || 0, isFinite(Number(_0x54e836 && _0x54e836['x'])) ? Number(_0x54e836['x']) : Number(_0x2c0141['x']) || 0);
-    var origRight = Math.max((Number(_0x2c0141['x']) || 0) + btnW, isFinite(Number(_0x54e836 && _0x54e836['x'])) ? Number(_0x54e836['x']) + (Number(_0x54e836['width']) || 80) : (Number(_0x2c0141['x']) || 0) + btnW);
+    var origLeft = Math.min(Number(origBtn.x) || 0, isFinite(Number(origLabel && origLabel.x)) ? Number(origLabel.x) : Number(origBtn.x) || 0);
+    var origRight = Math.max((Number(origBtn.x) || 0) + btnW, isFinite(Number(origLabel && origLabel.x)) ? Number(origLabel.x) + (Number(origLabel.width) || 80) : (Number(origBtn.x) || 0) + btnW);
+
+    var digBtnX, digBtnY, digLblX, digLblY;
 
     if (origRight + 10 + groupW <= containerW - 6) {
-      _0x289ca6 = origRight + 10;
-      _0x146ae0 = btnY;
-      _0x446dc7 = _0x289ca6 + btnW + gap;
-      _0x2dc6bb = lblY;
+      // 空间充足：排在原生控件右侧
+      digBtnX = origRight + 10;
+      digBtnY = btnY;
+      digLblX = digBtnX + btnW + gap;
+      digLblY = lblY;
     } else if (origLeft - 10 - groupW >= 10) {
-      _0x289ca6 = origLeft - 10 - groupW;
-      _0x146ae0 = btnY;
-      _0x446dc7 = _0x289ca6 + btnW + gap;
-      _0x2dc6bb = lblY;
+      // 右侧不足：并排在原生控件左侧空白区
+      digBtnX = origLeft - 10 - groupW;
+      digBtnY = btnY;
+      digLblX = digBtnX + btnW + gap;
+      digLblY = lblY;
     } else {
-      _0x289ca6 = Math.max(10, Math.min(origLeft, containerW - groupW - 10));
-      _0x146ae0 = Math.max(0, btnY - btnH - 6);
-      _0x446dc7 = _0x289ca6 + btnW + gap;
-      _0x2dc6bb = _0x146ae0;
+      // 均不足：折到上方一行紧凑对齐
+      digBtnX = Math.max(10, Math.min(origLeft, containerW - groupW - 10));
+      digBtnY = Math.max(0, btnY - btnH - 6);
+      digLblX = digBtnX + btnW + gap;
+      digLblY = digBtnY;
     }
 
-    setNodeSize(_0x1f3826, btnW, btnH);
-    setNodePos(_0x1f3826, _0x289ca6, _0x146ae0);
-    _0x1f3826['sortingOrder'] = 9997;
-    if (_0x54bf7f) {
-      setNodeSize(_0x54bf7f, lblW, lblH);
-      setNodePos(_0x54bf7f, _0x446dc7, _0x2dc6bb);
-      _0x54bf7f['sortingOrder'] = 9997;
+    setNodeSize(digBtn, btnW, btnH);
+    setNodePos(digBtn, digBtnX, digBtnY);
+    digBtn.sortingOrder = 9997;
+
+    if (digLabel) {
+      setNodeSize(digLabel, lblW, lblH);
+      setNodePos(digLabel, digLblX, digLblY);
+      digLabel.sortingOrder = 9997;
     }
-    _0x168b47 = state['autoDigControls']['filter'](function (_0x26785e) {
-      return _0x26785e && _0x26785e['button'] === _0x1f3826;
+
+    var record = state.autoDigControls.filter(function (it) {
+      return it && it.button === digBtn;
     })[0];
-    if (!_0x168b47) _0x168b47 = {
-      'panel': _0x549d90,
-      'root': _0x27fb0d,
-      'button': _0x1f3826,
-      'label': _0x54bf7f
-    }, state['autoDigControls']['push'](_0x168b47);
-    else _0x168b47['panel'] = _0x549d90,
-      _0x168b47['label'] = _0x54bf7f;
-    _0x1f3826['clearClick'] && _0x1f3826['clearClick'](),
-      _0x1f3826['onClick'] && _0x1f3826['onClick'](function () {
-        state['autoDig'] = !state['autoDig'],
-          state['lastBuildingAttackAt'] = 0,
-          state['lastBuildingAttackId'] = '',
-          refreshAutoDigControls(),
-          logInfo('自动刨地:', state['autoDig'] ? '开启' : '关闭');
-      }),
-      updateAutoDigControl(_0x168b47);
-    return _0x168b47;
+
+    if (!record) {
+      record = {
+        panel: panel,
+        root: contentPane,
+        button: digBtn,
+        label: digLabel
+      };
+      state.autoDigControls.push(record);
+    } else {
+      record.panel = panel;
+      record.label = digLabel;
+    }
+
+    if (digBtn.clearClick) digBtn.clearClick();
+    if (digBtn.onClick) {
+      digBtn.onClick(function () {
+        state.autoDig = !state.autoDig;
+        state.lastBuildingAttackAt = 0;
+        state.lastBuildingAttackId = '';
+        refreshAutoDigControls();
+        logInfo('自动刨地:', state.autoDig ? '开启' : '关闭');
+      });
+    }
+
+    updateAutoDigControl(record);
+    return record;
   }
+
   function removeAutoDigControls() {
-    state['autoDigControls']['forEach'](function (_0x2c4310) {
-      ['button', 'label']['forEach'](function (_0x51d01f) {
-        var _0x5a8035 = _0x2c4310 && _0x2c4310[_0x51d01f];
-        if (!_0x5a8035) return;
+    state.autoDigControls.forEach(function (ctrl) {
+      ['button', 'label'].forEach(function (prop) {
+        var node = ctrl && ctrl[prop];
+        if (!node) return;
         try {
-          _0x5a8035['clearClick'] && _0x5a8035['clearClick'](),
-            _0x5a8035['parent'] && typeof _0x5a8035['parent']['removeChild'] === 'function' && _0x5a8035['parent']['removeChild'](_0x5a8035),
-            _0x5a8035['dispose'] && _0x5a8035['dispose']();
-        }
-        catch (_0x2a1036) {
-        }
+          if (node.clearClick) node.clearClick();
+          if (node.parent && typeof node.parent.removeChild === 'function') node.parent.removeChild(node);
+          if (node.dispose) node.dispose();
+        } catch (e) {}
       });
-      if (_0x2c4310 && _0x2c4310['root']) _0x2c4310['root']['__saltAutoDigButton'] = null,
-        _0x2c4310['root']['__saltAutoDigLabel'] = null;
-    }),
-      state['autoDigControls'] = [];
+      if (ctrl && ctrl.root) {
+        ctrl.root.__saltAutoDigButton = null;
+        ctrl.root.__saltAutoDigLabel = null;
+      }
+    });
+    state.autoDigControls = [];
   }
-  function patchBuildingPanel() {
+
+  function runAutoBuildingAttack(mod, selfPlayer) {
+    if (!state.autoDig || state.lockedTarget || state.lockQueue.length || !mod || !selfPlayer) return;
+    if (mod.isAutoAttack !== undefined) mod.isAutoAttack = true;
+
+    var curB = selfPlayer.curBuilding;
+    if (!curB || !curB.inBuilding || !curB.canAttackBuilding || !isIdleState(selfPlayer) || typeof mod.sendStartAttackBuilding !== 'function') return;
+
+    var bId = curB.id;
+    var now = Date.now();
+    if (!bId || (state.lastBuildingAttackId === bId && now - Number(state.lastBuildingAttackAt || 0) < 2000)) return;
+
+    state.lastBuildingAttackId = bId;
+    state.lastBuildingAttackAt = now;
     try {
-      var _0x384a80 = gameRequire('LegionWarBuildingPanel'),
-        _0x36ee9e = _0x384a80 && _0x384a80['LegionWarBuildingPanel'],
-        _0x169cd3 = _0x36ee9e && _0x36ee9e['prototype'],
-        _0x2832f6,
-        _0x5f3513 = '__saltQueueOriginal_refresh';
-      if (!_0x169cd3 || _0x169cd3['__saltAutoDigVersion'] === VERSION) return false;
-      restoreOriginalMethod(_0x169cd3, '_refresh'),
-        _0x2832f6 = _0x169cd3['_refresh'];
-      if (typeof _0x2832f6 !== 'function') return false;
-      return _0x169cd3[_0x5f3513] = _0x2832f6,
-        _0x169cd3['_refresh'] = function () {
-          var _0x48bb60 = this,
-            _0xd9f831 = _0x2832f6['apply'](this, arguments);
-          return window['setTimeout'](function () {
-            !state['destroyed'] && ensureAutoDigControl(_0x48bb60);
-          }, 0),
-            _0xd9f831;
-        },
-        _0x169cd3['__saltAutoDigVersion'] = VERSION,
-        true;
-    }
-    catch (_0x1e82f1) {
-      return logWarn('挂载自动刨地开关失败:', _0x1e82f1 && _0x1e82f1['message'] || _0x1e82f1), false;
+      var promise = mod.sendStartAttackBuilding(bId);
+      if (promise && typeof promise.catch === 'function') promise.catch(function () {});
+      if (promise) logInfo('已自动攻打建筑:', bId);
+    } catch (e) {
+      logWarn('自动攻打建筑调用失败:', e && e.message || e);
     }
   }
-  function isBuildingPanelPatched() {
-    try {
-      var _0x1e843a = gameRequire('LegionWarBuildingPanel'),
-        _0x5a4e18 = _0x1e843a && _0x1e843a['LegionWarBuildingPanel'];
-      return !!(_0x5a4e18 && _0x5a4e18['prototype'] && _0x5a4e18['prototype']['__saltAutoDigVersion'] === VERSION);
+
+  /* ============================================================================
+   * 9. LOCK & COMBAT ENGINE (锁头核心攻击调度机)
+   * ============================================================================ */
+
+  function getLockedTargetRecord(targetId) {
+    var cur = state.lockedTarget;
+    if (cur && Number(cur.targetId) === Number(targetId)) return cur;
+    for (var i = 0; i < state.lockQueue.length; i++) {
+      if (Number(state.lockQueue[i].targetId) === Number(targetId)) return state.lockQueue[i];
     }
-    catch (_0x27432d) {
-      return false;
-    }
+    return null;
   }
-  function unpatchBuildingPanel() {
+
+  function updateLockControl(listItem) {
+    var lockBtn = listItem && listItem.__saltQueueLockButton;
+    var player = listItem && listItem.__saltQueuePlayer;
+    var isLocked = player && !!getLockedTargetRecord(getAttackTargetId(player));
+    var fightBtn = listItem && listItem.m_btnFight;
+    var btnHeight = Number(fightBtn && fightBtn.height) || 50;
+    var btnWidth = Number(fightBtn && fightBtn.width) || 120;
+    var fightBtnX = Number(fightBtn && fightBtn.x);
+
+    if (!lockBtn) return;
+    if (!isFinite(fightBtnX)) fightBtnX = (Number(listItem && listItem.width) || 520) - btnWidth;
+    var lockBtnX = Math.max(0, fightBtnX - btnWidth - 10);
+    var canLock = !!player && !isSelfPlayer(player) && !isSameLegionTarget(player);
+
+    setNodeSize(lockBtn, btnWidth, btnHeight);
+    setNodePos(lockBtn, lockBtnX, Number(fightBtn && fightBtn.y) || 20);
+    lockBtn.visible = canLock;
+    lockBtn.touchable = canLock;
+    lockBtn.enabled = true;
+    lockBtn.grayed = false;
+    lockBtn.alpha = 1;
+    lockBtn.sortingOrder = 9999;
+    lockBtn.title = isLocked ? '锁定中' : '锁定';
+
+    var colorCtrl = lockBtn.m_color || (typeof lockBtn.getController === 'function' && lockBtn.getController('color'));
+    if (colorCtrl) colorCtrl.selectedPage = 'green';
+
     try {
-      var _0x1741ad = gameRequire('LegionWarBuildingPanel'),
-        _0x572ae9 = _0x1741ad && _0x1741ad['LegionWarBuildingPanel'],
-        _0x26c748 = _0x572ae9 && _0x572ae9['prototype'];
-      if (!_0x26c748) return;
-      restoreOriginalMethod(_0x26c748, '_refresh');
+      if (typeof listItem.setChildIndex === 'function') {
+        listItem.setChildIndex(lockBtn, Math.max(0, Number(listItem.numChildren || 1) - 1));
+      }
+    } catch (e) {}
+  }
+
+  function ensureLockControl(listItem) {
+    var fg = getFgui();
+    var lockBtn = listItem && listItem.__saltQueueLockButton;
+    var fightBtn = listItem && listItem.m_btnFight;
+    if (!listItem) return null;
+
+    if (lockBtn && fg && fg.GButton && !(lockBtn instanceof fg.GButton)) {
       try {
-        delete _0x26c748['__saltAutoDigVersion'];
+        if (lockBtn.clearClick) lockBtn.clearClick();
+        if (lockBtn.parent && typeof lockBtn.parent.removeChild === 'function') lockBtn.parent.removeChild(lockBtn);
+        if (lockBtn.dispose) lockBtn.dispose();
+      } catch (e) {}
+      listItem.__saltQueueLockButton = null;
+      lockBtn = null;
+    }
+
+    if (!lockBtn && fg && fg.UIPackage && fightBtn) {
+      try {
+        var resUrl = fightBtn.resourceURL;
+        lockBtn = resUrl && fg.UIPackage.createObjectFromURL(resUrl);
+      } catch (e) {
+        lockBtn = null;
       }
-      catch (_0x3df04f) {
+      if (lockBtn) {
+        lockBtn.name = 'saltQueueLockButton';
+        listItem.addChild(lockBtn);
+        listItem.__saltQueueLockButton = lockBtn;
+        if (state.items.indexOf(listItem) < 0) state.items.push(listItem);
       }
     }
-    catch (_0x277c49) {
-    }
-  }
-  function patchTroopsPage(_0x2117b0,
-    _0x505ad7) {
-    try {
-      var _0x3a5ae2 = gameRequire(_0x2117b0),
-        _0x19ab58 = _0x3a5ae2 && _0x3a5ae2[_0x505ad7],
-        _0x3ed654 = _0x19ab58 && _0x19ab58["prototype"];
-      if (!_0x3ed654 || _0x3ed654["__saltQueueLockVersion"] === VERSION) return false;
-      ['_refreshItem',
-        '_refreshTeamItem']['forEach'](function (_0x2acfd4) {
-          restoreOriginalMethod(_0x3ed654,
-            _0x2acfd4);
-          var _0x1196f4 = "__saltQueueOriginal" + _0x2acfd4,
-            _0x341141 = _0x3ed654[_0x2acfd4];
-          if (typeof _0x341141 !== 'function') return;
-          _0x3ed654[_0x1196f4] = _0x341141,
-            _0x3ed654[_0x2acfd4] = function (_0xfc748d,
-              _0x371e47,
-              _0x1dda11) {
-              var _0x441099 = _0x341141["apply"](this,
-                arguments);
-              return window["setTimeout"](function () {
-                refreshItem(_0x371e47,
-                  _0x1dda11);
-              },
-                0),
-                _0x441099;
-            };
-        });
-      restoreOriginalMethod(_0x3ed654, '_refresh');
-      var origRefresh = _0x3ed654['_refresh'];
-      if (typeof origRefresh === 'function') {
-        _0x3ed654['__saltQueueOriginal_refresh'] = origRefresh;
-        _0x3ed654['_refresh'] = function () {
-          var self = this;
-          var ret = origRefresh.apply(self, arguments);
-          try {
-            ensureNativeTroopsSortButtons(self);
-            sortTroopsList(self);
-          } catch (e) { }
-          return ret;
-        };
-      }
-      restoreOriginalMethod(_0x3ed654, 'onShow');
-      var origShow = _0x3ed654['onShow'];
-      if (typeof origShow === 'function') {
-        _0x3ed654['__saltQueueOriginalonShow'] = origShow;
-        _0x3ed654['onShow'] = function () {
-          var self = this;
-          var ret = origShow.apply(self, arguments);
-          try {
-            ensureNativeTroopsSortButtons(self);
-            sortTroopsList(self);
-          } catch (e) { }
-          return ret;
-        };
-      }
-      _0x3ed654["__saltQueueLockVersion"] = VERSION;
-      state['patched']["push"]({
-        'moduleName': _0x2117b0,
-        'exportName': _0x505ad7
+    if (!lockBtn) return null;
+
+    lockBtn.touchable = true;
+    lockBtn.enabled = true;
+    lockBtn.grayed = false;
+    lockBtn.title = '锁定';
+    if (lockBtn.clearClick) lockBtn.clearClick();
+    if (lockBtn.onClick) {
+      lockBtn.onClick(function () {
+        toggleLockedTarget(listItem.__saltQueuePlayer, listItem);
       });
-      logInfo('已挂载队列名片与排序控制:',
-        _0x2117b0);
+    }
+
+    var colorCtrl = lockBtn.m_color || (typeof lockBtn.getController === 'function' && lockBtn.getController('color'));
+    if (colorCtrl) colorCtrl.selectedPage = 'green';
+    updateLockControl(listItem);
+    return lockBtn;
+  }
+
+  function refreshLockControls() {
+    state.items.forEach(function (item) {
+      updateLockControl(item);
+    });
+  }
+
+  function toggleLockedTarget(targetPlayer, listItem) {
+    if (!targetPlayer || isSelfPlayer(targetPlayer) || isSameLegionTarget(targetPlayer)) return false;
+    var targetId = getAttackTargetId(targetPlayer);
+    if (!targetId) return false;
+
+    var existing = getLockedTargetRecord(targetId);
+    if (existing) {
+      if (existing === state.lockedTarget) {
+        clearLockedTarget();
+      } else {
+        state.lockQueue = state.lockQueue.filter(function (it) {
+          return it !== existing;
+        });
+        refreshLockControls();
+      }
       return true;
     }
-    catch (_0x3c4ed3) {
-      return logWarn("挂载队列名片与排序失败:",
-        _0x2117b0,
-        _0x3c4ed3 && _0x3c4ed3["message"] || _0x3c4ed3),
-        false;
+
+    var isMarch = isMarchState(targetPlayer);
+    var marchDest = isMarch && getMarchDestination(targetPlayer);
+    var destBuilding = marchDest && marchDest.march && marchDest.march.toBuilding || targetPlayer.curBuilding;
+    var destPos = (marchDest && marchDest.position) || (isMarch ? null : copyPosition(targetPlayer.position));
+    var destBuildingId = (destBuilding && destBuilding.id) || (destPos && (destPos.x + '_' + destPos.y));
+    if (marchDest && marchDest.buildingId) destBuildingId = marchDest.buildingId;
+    if (!isMarch && !destPos && !destBuildingId) return false;
+
+    var newRecord = {
+      targetId: targetId,
+      target: targetPlayer,
+      buildingId: destBuildingId || '',
+      position: destPos,
+      waitingForTarget: isMarch,
+      destinationKnown: !!(destPos || destBuildingId),
+      targetEndMarchTime: Number(marchDest && marchDest.march && marchDest.march.endTime) || Number(targetPlayer.endMarchTime) || 0,
+      originPosition: copyPosition(getBattlefield() && getBattlefield().self && getBattlefield().self.position),
+      originBuildingId: (getBattlefield() && getBattlefield().self && getBattlefield().self.curBuilding && getBattlefield().self.curBuilding.id) || '',
+      targetLeft: false,
+      targetLeftNotified: false,
+      returning: false,
+      returnSent: false,
+      engaged: false,
+      engagedAt: 0,
+      combatSeen: false,
+      failedAttempts: 0,
+      lastActionAt: 0
+    };
+
+    if (state.lockedTarget) {
+      state.lockQueue.push(newRecord);
+    } else {
+      state.lockedTarget = newRecord;
     }
+
+    state.lastLockActionAt = 0;
+    refreshLockControls();
+    logInfo('锁定盐场目标:', targetId, destBuildingId, '当前队列总数:', state.lockQueue.length + (state.lockedTarget ? 1 : 0));
+    if (state.lockedTarget === newRecord) {
+      runLockedAttack();
+    }
+    return true;
   }
-  function patchAll() {
-    if (!hasGameRequire()) return false;
-    return patchTroopsPage('AttackTroopsPage',
-      'AttackTroopsPage'),
-      patchTroopsPage('DefenseTroopsPage',
-        'DefenseTroopsPage'),
-      patchBuildingPanel(),
-      isTroopsPagePatched('AttackTroopsPage',
-        'AttackTroopsPage') && isTroopsPagePatched('DefenseTroopsPage',
-          'DefenseTroopsPage') && isBuildingPanelPatched();
+
+  function clearLockedTarget() {
+    state.lockedTarget = null;
+    state.lastLockActionAt = 0;
+    hideMarchCountdown();
+    while (!state.lockedTarget && state.lockQueue.length) {
+      state.lockedTarget = state.lockQueue.shift();
+    }
+    refreshLockControls();
   }
-  function isTroopsPagePatched(_0x336de2,
-    _0x30fcc4) {
+
+  function clearAllLockedTargets() {
+    state.lockQueue = [];
+    state.lockedTarget = null;
+    state.lastLockActionAt = 0;
+    hideMarchCountdown();
+    refreshLockControls();
+  }
+
+  function hideAllLockOverlays() {
+    clearAllLockedTargets();
+  }
+
+  function lockPlayer(player, listItem) {
+    if (player) toggleLockedTarget(player, listItem);
+    else clearAllLockedTargets();
+    return !!state.lockedTarget;
+  }
+
+  function requestAutoSpeedUp(mod, selfPlayer) {
+    if (!state.autoSpeedUp || !mod || !selfPlayer) return;
+    if (!isMarchState(selfPlayer)) {
+      state.speedUpMarchId = 0;
+      state.speedUpRequestedAt = 0;
+      return;
+    }
+    var marchId = selfPlayer.marchId;
+    var now = Date.now();
+    if (!marchId || now - Number(state.speedUpRequestedAt || 0) < 1500) return;
+    state.speedUpRequestedAt = now;
+    state.speedUpMarchId = marchId;
+
     try {
-      var _0x373b48 = gameRequire(_0x336de2),
-        _0x590646 = _0x373b48 && _0x373b48[_0x30fcc4];
-      return !!(_0x590646 && _0x590646["prototype"] && _0x590646["prototype"]["__saltQueueLockVersion"] === VERSION);
+      var promise = mod.sendSpeedUp && mod.sendSpeedUp(marchId);
+      if (!promise) return;
+      if (typeof promise.catch === 'function') promise.catch(function () {});
+      logInfo('已使用金砖加速行军:', marchId);
+    } catch (e) {
+      logWarn('金砖加速调用失败:', e && e.message || e);
     }
-    catch (_0x27e97a) {
+  }
+
+  function getQueuedTargetAtCurrentBuilding(selfPlayer, excludeWait) {
+    if (!selfPlayer) return null;
+    var curBId = selfPlayer.curBuilding && selfPlayer.curBuilding.id;
+    var candidateIndex = -1;
+    var candidateTarget = null;
+
+    for (var i = 0; i < state.lockQueue.length; i++) {
+      var record = state.lockQueue[i];
+      var target = getPlayerById(record.targetId) || record.target;
+      if (!target || isDeadState(target) || isMarchState(target) || isSameLegionTarget(target)) continue;
+
+      var inQueue = findTargetInBuildingQueues(selfPlayer.curBuilding, record.targetId);
+      if (inQueue) {
+        return {
+          index: i,
+          record: record,
+          target: inQueue.player || target
+        };
+      }
+
+      var targetBId = target.curBuilding && target.curBuilding.id;
+      if (!(curBId && targetBId && String(curBId) === String(targetBId)) && !samePosition(target.position, selfPlayer.position)) continue;
+
+      if (isIdleState(target)) {
+        return {
+          index: i,
+          record: record,
+          target: target
+        };
+      }
+      if (!excludeWait && candidateIndex < 0) {
+        candidateIndex = i;
+        candidateTarget = target;
+      }
+    }
+
+    return candidateIndex < 0 ? null : {
+      index: candidateIndex,
+      record: state.lockQueue[candidateIndex],
+      target: candidateTarget
+    };
+  }
+
+  function promoteQueuedTargetAtCurrentBuilding(selfPlayer, excludeWait, requeueOld) {
+    var match = getQueuedTargetAtCurrentBuilding(selfPlayer, excludeWait);
+    if (!match) return false;
+
+    var oldLock = state.lockedTarget;
+    var promoted = state.lockQueue.splice(match.index, 1)[0];
+    promoted.target = match.target;
+    var curB = match.target.curBuilding;
+    promoted.buildingId = (curB && curB.id) || promoted.buildingId;
+    promoted.position = copyPosition(match.target.position) || copyPosition(curB && curB.position) || promoted.position;
+    promoted.waitingForTarget = false;
+    promoted.destinationKnown = true;
+    promoted.targetLeft = false;
+    promoted.targetLeftNotified = false;
+    promoted.returning = false;
+    promoted.returnSent = false;
+    promoted.lastActionAt = 0;
+
+    if (requeueOld && oldLock) {
+      state.lockQueue.push(oldLock);
+    }
+    state.lockedTarget = promoted;
+    state.lastLockActionAt = 0;
+    hideMarchCountdown();
+    refreshLockControls();
+    return true;
+  }
+
+  function runLockedAttack() {
+    var lockTarget = state.lockedTarget;
+    if (state.destroyed || !lockTarget) return;
+
+    var mod = getLegionWarModule();
+    var bf = getBattlefield();
+    var selfPlayer = bf && bf.self;
+    var targetPlayer = getPlayerById(lockTarget.targetId) || lockTarget.target;
+    if (!mod || !bf || !selfPlayer) return;
+
+    if (mod.isAutoAttack !== undefined) mod.isAutoAttack = false;
+    var now = Date.now();
+
+    if (isDeadState(selfPlayer)) {
+      logInfo('自身已死亡，停止全部锁定目标。');
+      clearAllLockedTargets();
+      return;
+    }
+
+    // 1. 处于开战状态监控
+    if (lockTarget.engaged) {
+      if (isCombatState(selfPlayer)) {
+        lockTarget.combatSeen = true;
+        lockTarget.failedAttempts = 0;
+        return updateLockedBattleCountdown(selfPlayer, lockTarget.targetId);
+      }
+      if (lockTarget.combatSeen) {
+        if (isIdleState(selfPlayer)) {
+          logInfo('当前锁定目标战斗结束，切换下一个。');
+          clearLockedTarget();
+          if (state.lockedTarget) runLockedAttack();
+        }
+        return;
+      }
+      if (!isIdleState(selfPlayer) || now - Number(lockTarget.engagedAt || 0) < 2500) return;
+
+      lockTarget.engaged = false;
+      lockTarget.lastActionAt = 0;
+      lockTarget.failedAttempts = (Number(lockTarget.failedAttempts) || 0) + 1;
+      logInfo('开战状态未同步，重新尝试当前锁定目标，失败重试次数:', lockTarget.failedAttempts);
+
+      if (lockTarget.failedAttempts >= 3) {
+        logInfo('目标连续3次开战失败（可能受限或无法攻击），放弃该目标切换下一个。');
+        clearLockedTarget();
+        if (state.lockedTarget) runLockedAttack();
+        return;
+      }
+    }
+
+    // 2. 目标存活检测
+    if (!targetPlayer || isDeadState(targetPlayer)) {
+      logInfo('锁定目标已离场，切换下一个。');
+      clearLockedTarget();
+      if (state.lockedTarget) runLockedAttack();
+      return;
+    }
+
+    // 3. 等待目标行军到达
+    if (lockTarget.waitingForTarget && targetPlayer) {
+      if (isMarchState(targetPlayer)) {
+        updateTargetArrivalCountdown(lockTarget, targetPlayer);
+        var marchDest = getMarchDestination(targetPlayer);
+        if (!lockTarget.destinationKnown && marchDest) {
+          lockTarget.buildingId = marchDest.buildingId || '';
+          lockTarget.position = marchDest.position;
+          lockTarget.destinationKnown = !!(lockTarget.buildingId || lockTarget.position);
+        }
+      } else {
+        var tBuilding = targetPlayer.curBuilding;
+        lockTarget.position = copyPosition(targetPlayer.position) || copyPosition(tBuilding && tBuilding.position) || lockTarget.position;
+        lockTarget.buildingId = (tBuilding && tBuilding.id) || (lockTarget.position && (lockTarget.position.x + '_' + lockTarget.position.y)) || lockTarget.buildingId;
+        lockTarget.destinationKnown = !!(lockTarget.buildingId || lockTarget.position);
+        lockTarget.waitingForTarget = false;
+        hideMarchCountdown();
+        logInfo('锁定目标已到达目的建筑，准备立即开战:', lockTarget.buildingId);
+      }
+    }
+
+    // 4. 自身行军监控
+    if (isMarchState(selfPlayer)) {
+      if (lockTarget.waitingForTarget) {
+        updateTargetArrivalCountdown(lockTarget, targetPlayer);
+      } else {
+        updateMarchCountdown(selfPlayer, lockTarget.returning);
+      }
+      requestAutoSpeedUp(mod, selfPlayer);
+
+      if (!lockTarget.waitingForTarget && !lockTarget.returning && targetPlayer &&
+        (!targetPlayer.curBuilding || targetPlayer.curBuilding.id !== lockTarget.buildingId) &&
+        !samePosition(targetPlayer.position, lockTarget.position) && !lockTarget.targetLeft) {
+        lockTarget.targetLeft = true;
+        if (lockTarget.targetLeftNotified !== true) {
+          lockTarget.targetLeftNotified = true;
+          logInfo('锁定目标已离开原建筑，到达后返回原建筑:', lockTarget.buildingId);
+        }
+      }
+      return;
+    }
+
+    hideMarchCountdown();
+    if (!targetPlayer || !isIdleState(selfPlayer)) return;
+
+    var curB = selfPlayer.curBuilding;
+    var inDestBuilding = !!((curB && curB.id === lockTarget.buildingId) || samePosition(selfPlayer.position, lockTarget.position));
+    var inOriginBuilding = !!((curB && curB.id === lockTarget.originBuildingId) || samePosition(selfPlayer.position, lockTarget.originPosition));
+    var targetInDestBuilding = !!((targetPlayer.curBuilding && targetPlayer.curBuilding.id === lockTarget.buildingId) || samePosition(targetPlayer.position, lockTarget.position));
+
+    // 5. 目标行军中，拦截前往目的建筑
+    if (lockTarget.waitingForTarget) {
+      if (!lockTarget.destinationKnown || inDestBuilding) return;
+      if (now - (lockTarget.lastActionAt || 0) < 1200 || !lockTarget.position || typeof mod.sendStartMarch !== 'function') return;
+      if (mod.sendStartMarch(lockTarget.position)) {
+        lockTarget.lastActionAt = now;
+        logInfo('前往目标行军目的建筑并等待:', lockTarget.buildingId);
+      }
+      return;
+    }
+
+    // 6. 目标离开建筑判定（包含二次进队扫描防护，彻底杜绝到站折返跑）
+    if (lockTarget.targetLeft) {
+      if (inDestBuilding && curB) {
+        var queueMatch = findTargetInBuildingQueues(curB, lockTarget.targetId);
+        if (queueMatch) {
+          logInfo('锁定目标仍在当前建筑队列中，纠正离开状态，恢复开战。');
+          lockTarget.targetLeft = false;
+          lockTarget.targetLeftNotified = false;
+          lockTarget.returning = false;
+        }
+      }
+      if (lockTarget.targetLeft) {
+        if (inDestBuilding && promoteQueuedTargetAtCurrentBuilding(selfPlayer, false, false)) {
+          logInfo('离开的锁定目标已跳过，继续处理当前建筑内的其他锁定目标。');
+          return runLockedAttack();
+        }
+        if (inDestBuilding && !lockTarget.returning) {
+          if (lockTarget.originPosition && typeof mod.sendStartMarch === 'function' && now - (lockTarget.lastActionAt || 0) >= 1200 && mod.sendStartMarch(lockTarget.originPosition)) {
+            lockTarget.returning = true;
+            lockTarget.lastActionAt = now;
+            logInfo('已到达空建筑，立即返回原建筑:', lockTarget.originBuildingId);
+          }
+          return;
+        }
+        if (lockTarget.returning && inOriginBuilding) {
+          logInfo('已返回原建筑，解除锁定。');
+          return clearLockedTarget();
+        }
+        if (lockTarget.returning) return;
+      }
+    }
+
+    if (now - (lockTarget.lastActionAt || 0) < 1200) return;
+
+    // 7. 已到达目标所在建筑，发起开战
+    if (inDestBuilding) {
+      var queueTarget = findTargetInBuildingQueues(curB, lockTarget.targetId);
+      var currentBattle = queueTarget ? null : findTargetBattle(curB, lockTarget.targetId);
+
+      // 若当前目标被抢先攻击，提升处理下一个未开战的目标
+      if (!queueTarget && (currentBattle || isCombatState(targetPlayer)) && promoteQueuedTargetAtCurrentBuilding(selfPlayer, true, true)) {
+        logInfo('当前锁定目标已被其他玩家攻击，优先处理下一个未开战目标。');
+        return runLockedAttack();
+      }
+
+      if (!queueTarget && currentBattle) {
+        return updateThirdPartyBattleCountdown(currentBattle, lockTarget);
+      }
+
+      if (queueTarget) {
+        targetPlayer = queueTarget.player || targetPlayer;
+        lockTarget.waitingBattleKey = '';
+      }
+
+      if ((!queueTarget && !isIdleState(targetPlayer)) || Number(targetPlayer.legionId) === Number(selfPlayer.legionId)) return;
+
+      if (mod.sendStartBattle(lockTarget.targetId)) {
+        lockTarget.engaged = true;
+        lockTarget.engagedAt = now;
+        lockTarget.combatSeen = false;
+        lockTarget.lastActionAt = now;
+        logInfo('已到达锁定建筑，开始攻击:', lockTarget.targetId);
+      }
+      return;
+    }
+
+    // 8. 尚未到达目的建筑，发起行军
+    if (targetPlayer && !targetInDestBuilding) {
+      lockTarget.targetLeft = true;
+    }
+    if (!lockTarget.position || typeof mod.sendStartMarch !== 'function') return;
+    if (mod.sendStartMarch(lockTarget.position)) {
+      lockTarget.lastActionAt = now;
+      logInfo('前往锁定建筑:', lockTarget.buildingId);
+    }
+  }
+
+  /* ============================================================================
+   * 10. PROTOTYPE HOOKS (游戏原型链注入与拦截)
+   * ============================================================================ */
+
+  function restoreOriginalMethod(targetProto, methodName) {
+    var backupNames = ['__saltQueueOriginal' + methodName, '__saltOriginal' + methodName];
+    var restored = false;
+    backupNames.forEach(function (name) {
+      if (typeof targetProto[name] === 'function') {
+        targetProto[methodName] = targetProto[name];
+        try { delete targetProto[name]; } catch (e) { targetProto[name] = null; }
+        restored = true;
+      }
+    });
+    try { delete targetProto.__saltTagsPatchVersion; } catch (e) {}
+    try { delete targetProto.__saltTagsPatched; } catch (e) {}
+    return restored;
+  }
+
+  function patchBuildingPanel() {
+    try {
+      var panelModule = gameRequire('LegionWarBuildingPanel');
+      var PanelClass = panelModule && panelModule.LegionWarBuildingPanel;
+      var proto = PanelClass && PanelClass.prototype;
+      var backupKey = '__saltQueueOriginal_refresh';
+      if (!proto || proto.__saltAutoDigVersion === VERSION) return false;
+
+      restoreOriginalMethod(proto, '_refresh');
+      var origRefresh = proto._refresh;
+      if (typeof origRefresh !== 'function') return false;
+
+      proto[backupKey] = origRefresh;
+      proto._refresh = function () {
+        var self = this;
+        var ret = origRefresh.apply(this, arguments);
+        window.setTimeout(function () {
+          if (!state.destroyed) ensureAutoDigControl(self);
+        }, 0);
+        return ret;
+      };
+      proto.__saltAutoDigVersion = VERSION;
+      return true;
+    } catch (e) {
+      logWarn('挂载自动刨地开关失败:', e && e.message || e);
       return false;
     }
   }
-  function unpatchTroopsPage(_0x1e7957,
-    _0x4f4fcc) {
+
+  function isBuildingPanelPatched() {
     try {
-      var _0x39cb66 = gameRequire(_0x1e7957),
-        _0x63d97c = _0x39cb66 && _0x39cb66[_0x4f4fcc],
-        _0x473efb = _0x63d97c && _0x63d97c["prototype"];
-      if (!_0x473efb) return;
-      restoreOriginalMethod(_0x473efb,
-        '_refreshItem');
-      restoreOriginalMethod(_0x473efb,
-        '_refreshTeamItem');
-      restoreOriginalMethod(_0x473efb,
-        '_refresh');
-      restoreOriginalMethod(_0x473efb,
-        'onShow');
-      try {
-        delete _0x473efb["__saltQueueLockVersion"];
-      }
-      catch (_0x3b36af) {
-      }
-    }
-    catch (_0x403f29) {
+      var panelModule = gameRequire('LegionWarBuildingPanel');
+      var PanelClass = panelModule && panelModule.LegionWarBuildingPanel;
+      return !!(PanelClass && PanelClass.prototype && PanelClass.prototype.__saltAutoDigVersion === VERSION);
+    } catch (e) {
+      return false;
     }
   }
+
+  function unpatchBuildingPanel() {
+    try {
+      var panelModule = gameRequire('LegionWarBuildingPanel');
+      var PanelClass = panelModule && panelModule.LegionWarBuildingPanel;
+      var proto = PanelClass && PanelClass.prototype;
+      if (!proto) return;
+      restoreOriginalMethod(proto, '_refresh');
+      try { delete proto.__saltAutoDigVersion; } catch (e) {}
+    } catch (e) {}
+  }
+
+  function patchTroopsPage(moduleName, exportName) {
+    try {
+      var pageMod = gameRequire(moduleName);
+      var PageClass = pageMod && pageMod[exportName];
+      var proto = PageClass && PageClass.prototype;
+      if (!proto || proto.__saltQueueLockVersion === VERSION) return false;
+
+      ['_refreshItem', '_refreshTeamItem'].forEach(function (methodName) {
+        restoreOriginalMethod(proto, methodName);
+        var origMethod = proto[methodName];
+        if (typeof origMethod !== 'function') return;
+        proto['__saltQueueOriginal' + methodName] = origMethod;
+        proto[methodName] = function (argA, item, player) {
+          var ret = origMethod.apply(this, arguments);
+          window.setTimeout(function () {
+            refreshItem(item, player);
+          }, 0);
+          return ret;
+        };
+      });
+
+      restoreOriginalMethod(proto, '_refresh');
+      var origRefresh = proto._refresh;
+      if (typeof origRefresh === 'function') {
+        proto.__saltQueueOriginal_refresh = origRefresh;
+        proto._refresh = function () {
+          var ret = origRefresh.apply(this, arguments);
+          try {
+            ensureNativeTroopsSortButtons(this);
+            requestSortTroopsList(this);
+          } catch (e) {}
+          return ret;
+        };
+      }
+
+      restoreOriginalMethod(proto, 'onShow');
+      var origShow = proto.onShow;
+      if (typeof origShow === 'function') {
+        proto.__saltQueueOriginalonShow = origShow;
+        proto.onShow = function () {
+          var ret = origShow.apply(this, arguments);
+          try {
+            ensureNativeTroopsSortButtons(this);
+            requestSortTroopsList(this);
+          } catch (e) {}
+          return ret;
+        };
+      }
+
+      proto.__saltQueueLockVersion = VERSION;
+      state.patched.push({ moduleName: moduleName, exportName: exportName });
+      logInfo('已挂载队列名片与排序控制:', moduleName);
+      return true;
+    } catch (e) {
+      logWarn('挂载队列名片与排序失败:', moduleName, e && e.message || e);
+      return false;
+    }
+  }
+
+  function isTroopsPagePatched(moduleName, exportName) {
+    try {
+      var pageMod = gameRequire(moduleName);
+      var PageClass = pageMod && pageMod[exportName];
+      return !!(PageClass && PageClass.prototype && PageClass.prototype.__saltQueueLockVersion === VERSION);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function unpatchTroopsPage(moduleName, exportName) {
+    try {
+      var pageMod = gameRequire(moduleName);
+      var PageClass = pageMod && pageMod[exportName];
+      var proto = PageClass && PageClass.prototype;
+      if (!proto) return;
+      restoreOriginalMethod(proto, '_refreshItem');
+      restoreOriginalMethod(proto, '_refreshTeamItem');
+      restoreOriginalMethod(proto, '_refresh');
+      restoreOriginalMethod(proto, 'onShow');
+      try { delete proto.__saltQueueLockVersion; } catch (e) {}
+    } catch (e) {}
+  }
+
+  function patchAll() {
+    if (!hasGameRequire()) return false;
+    return patchTroopsPage('AttackTroopsPage', 'AttackTroopsPage') &&
+      patchTroopsPage('DefenseTroopsPage', 'DefenseTroopsPage') &&
+      patchBuildingPanel() &&
+      isTroopsPagePatched('AttackTroopsPage', 'AttackTroopsPage') &&
+      isTroopsPagePatched('DefenseTroopsPage', 'DefenseTroopsPage') &&
+      isBuildingPanelPatched();
+  }
+
   function removeLegacySaltTagsUi() {
     try {
-      window["SaltFieldTargetTags"] && typeof window["SaltFieldTargetTags"]['destroy'] === 'function' && window["SaltFieldTargetTags"]["destroy"]();
-    }
-    catch (_0x1bea54) {
-    }
-    ["salt-tags-ui",
-      "salt-tags-mini",
-      "salt-tags-style"]["forEach"](function (_0x476657) {
-        var _0x14953d = document["getElementById"](_0x476657);
-        if (_0x14953d && _0x14953d["parentNode"]) _0x14953d["parentNode"]["removeChild"](_0x14953d);
-      });
+      if (window.SaltFieldTargetTags && typeof window.SaltFieldTargetTags.destroy === 'function') {
+        window.SaltFieldTargetTags.destroy();
+      }
+    } catch (e) {}
+    ['salt-tags-ui', 'salt-tags-mini', 'salt-tags-style'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+    });
   }
+
+  /* ============================================================================
+   * 11. LIFECYCLE & EXPORT (生命周期监控、原生自动攻击保护与全局 API 导出)
+   * ============================================================================ */
+
   function start() {
-    var _0x2e2c0d = 0;
+    var retryCount = 0;
     removeLegacySaltTagsUi();
     startMarchTickTimer();
     if (patchAll()) return startLockMonitor();
-    state["retryTimer"] = window["setInterval"](function () {
-      _0x2e2c0d++,
-        (state["destroyed"] || patchAll() || _0x2e2c0d > 80) && (window["clearInterval"](state["retryTimer"]),
-          state["retryTimer"] = 0,
-          !state["destroyed"] && startLockMonitor());
-    },
-      500);
+
+    state.retryTimer = window.setInterval(function () {
+      retryCount++;
+      if (state.destroyed || patchAll() || retryCount > 80) {
+        window.clearInterval(state.retryTimer);
+        state.retryTimer = 0;
+        if (!state.destroyed) startLockMonitor();
+      }
+    }, 500);
   }
+
   function startLockMonitor() {
-    if (state["lockTimer"]) return;
-    state["lockTimer"] = window["setInterval"](function () {
-      var _0x4c2e7a = getLegionWarModule(),
-        _0x1b0f62 = getBattlefield(),
-        _0x3b2e8a = _0x1b0f62 && _0x1b0f62['self'];
-      var hasLock = !!(state['lockedTarget'] || (state['lockQueue'] && state['lockQueue']['length']));
-      if (_0x4c2e7a && _0x4c2e7a['isAutoAttack'] !== undefined) {
+    if (state.lockTimer) return;
+    state.lockTimer = window.setInterval(function () {
+      var mod = getLegionWarModule();
+      var bf = getBattlefield();
+      var selfPlayer = bf && bf.self;
+      var hasLock = !!(state.lockedTarget || (state.lockQueue && state.lockQueue.length));
+
+      // 原生 isAutoAttack 安全保护：仅在锁头期间临时关闭；退出锁头时精准无损还原用户原本设置
+      if (mod && mod.isAutoAttack !== undefined) {
         if (hasLock) {
-          if (state['userAutoAttack'] === null) {
-            state['userAutoAttack'] = !!_0x4c2e7a['isAutoAttack'];
+          if (state.userAutoAttack === null) {
+            state.userAutoAttack = !!mod.isAutoAttack;
           }
-          if (_0x4c2e7a['isAutoAttack']) {
-            _0x4c2e7a['isAutoAttack'] = false;
+          if (mod.isAutoAttack) {
+            mod.isAutoAttack = false;
           }
         } else {
-          if (state['userAutoAttack'] !== null) {
-            _0x4c2e7a['isAutoAttack'] = state['userAutoAttack'];
-            state['userAutoAttack'] = null;
+          if (state.userAutoAttack !== null) {
+            mod.isAutoAttack = state.userAutoAttack;
+            state.userAutoAttack = null;
           }
         }
       }
-      _0x4c2e7a && _0x3b2e8a && requestAutoSpeedUp(_0x4c2e7a, _0x3b2e8a);
-      _0x4c2e7a && _0x3b2e8a && runAutoBuildingAttack(_0x4c2e7a, _0x3b2e8a);
+
+      if (mod && selfPlayer) requestAutoSpeedUp(mod, selfPlayer);
+      if (mod && selfPlayer) runAutoBuildingAttack(mod, selfPlayer);
       runLockedAttack();
     }, 500);
   }
+
   function destroy() {
-    state["destroyed"] = true,
-      state["retryTimer"] && (window["clearInterval"](state["retryTimer"]),
-        state["retryTimer"] = 0),
-      state["lockTimer"] && (window["clearInterval"](state["lockTimer"]),
-        state["lockTimer"] = 0),
-      state["marchTickTimer"] && (window["clearInterval"](state["marchTickTimer"]),
-        state["marchTickTimer"] = 0),
-      state["sortBars"] && state["sortBars"].forEach(function (bar) {
+    state.destroyed = true;
+    if (state.retryTimer) {
+      window.clearInterval(state.retryTimer);
+      state.retryTimer = 0;
+    }
+    if (state.lockTimer) {
+      window.clearInterval(state.lockTimer);
+      state.lockTimer = 0;
+    }
+    if (state.marchTickTimer) {
+      window.clearInterval(state.marchTickTimer);
+      state.marchTickTimer = 0;
+    }
+
+    if (state.sortBars) {
+      state.sortBars.forEach(function (bar) {
         if (!bar) return;
-        ['label', 'energy', 'power', 'root'].forEach(function (k) {
+        ['label', 'energy', 'power', 'marchTime', 'restore', 'root'].forEach(function (k) {
           var node = bar[k];
           if (node && node.parent) {
             try {
               node.parent.removeChild(node);
               if (typeof node.dispose === 'function') node.dispose();
-            } catch (e) { }
+            } catch (e) {}
           }
         });
-      }),
-      state["sortBars"] = [],
-      Array["from"](state["activeRequests"])["forEach"](function (cancel) {
-        try {
-          cancel();
+      });
+      state.sortBars = [];
+    }
+
+    Array.from(state.activeRequests).forEach(function (cancel) {
+      try { cancel(); } catch (e) {}
+    });
+    state.activeRequests.clear();
+
+    unpatchTroopsPage('AttackTroopsPage', 'AttackTroopsPage');
+    unpatchTroopsPage('DefenseTroopsPage', 'DefenseTroopsPage');
+    unpatchBuildingPanel();
+    removeAutoDigControls();
+
+    state.items.forEach(function (item) {
+      hideSaltQueueOverlay(item);
+      if (item) item.__saltQueuePlayer = null;
+    });
+    state.items = [];
+
+    state.teamCache.clear();
+    state.formationCache.clear();
+    state.pending.clear();
+    state.imagePending.clear();
+    state.requestCooldown.clear();
+    state.lockedTarget = null;
+    state.lockQueue = [];
+
+    if (state.countdownText && state.countdownText.parent && typeof state.countdownText.parent.removeChild === 'function') {
+      state.countdownText.parent.removeChild(state.countdownText);
+    }
+    state.countdownText = null;
+
+    if (state.userAutoAttack !== null) {
+      try {
+        var mod = getLegionWarModule();
+        if (mod && mod.isAutoAttack !== undefined) {
+          mod.isAutoAttack = state.userAutoAttack;
         }
-        catch (_0x1e7fea) {
-        }
-      }),
-      state["activeRequests"]["clear"](),
-      unpatchTroopsPage('AttackTroopsPage',
-        'AttackTroopsPage'),
-      unpatchTroopsPage('DefenseTroopsPage',
-        'DefenseTroopsPage'),
-      unpatchBuildingPanel(),
-      removeAutoDigControls(),
-      state['items']["forEach"](function (_0x22e45a) {
-        hideSaltQueueOverlay(_0x22e45a);
-        if (_0x22e45a) _0x22e45a["__saltQueuePlayer"] = null;
-      }),
-      state["items"] = [],
-      state["teamCache"]['clear'](),
-      state["formationCache"]['clear'](),
-      state['pending']["clear"](),
-      state["imagePending"]['clear'](),
-      state["requestCooldown"]['clear'](),
-      state["lockedTarget"] = null,
-      state["lockQueue"] = [],
-      state["countdownText"] && state["countdownText"]["parent"] && typeof state["countdownText"]["parent"]["removeChild"] === 'function' && state["countdownText"]["parent"]["removeChild"](state["countdownText"]),
-      state["countdownText"] = null;
-      if (state['userAutoAttack'] !== null) {
-        try {
-          var _mod = getLegionWarModule();
-          if (_mod && _mod['isAutoAttack'] !== undefined) {
-            _mod['isAutoAttack'] = state['userAutoAttack'];
-          }
-        } catch (_e) {}
-        state['userAutoAttack'] = null;
-      }
-      delete window[GLOBAL_KEY];
+      } catch (e) {}
+      state.userAutoAttack = null;
+    }
+
+    delete window[GLOBAL_KEY];
   }
+
   var api = {
-    'version': VERSION,
-    'lock': lockPlayer,
-    'attackLocked': function () {
+    version: VERSION,
+    lock: lockPlayer,
+    attackLocked: function () {
       runLockedAttack();
-      return !!(state["lockedTarget"] && state["lockedTarget"]["engaged"]);
+      return !!(state.lockedTarget && state.lockedTarget.engaged);
     },
-    'clearLock': function () {
-      return hideAllLockOverlays(),
-        api;
+    clearLock: function () {
+      hideAllLockOverlays();
+      return api;
     },
-    'getState': function () {
+    getState: function () {
       return {
-        'version': VERSION,
-        'cacheSize': state["teamCache"]['size'],
-        'formationCacheSize': state["formationCache"]['size'],
-        'formationCacheHits': state["formationCacheHits"],
-        'formationRecognitionRuns': state["formationRecognitionRuns"],
-        'pendingRequests': state["pending"]["size"],
-        'activeRequests': state["activeRequests"]['size'],
-        'identityMode': "png-template-only",
-        'builtInHashes': 0,
-        'learnedHashes': 0,
-        'learnedHashBypass': false,
-        'templateCount': EMBEDDED_AVATAR_SIGNATURES['length'],
-        'recognizableTemplateCount': EMBEDDED_AVATAR_SIGNATURES['filter'](function (_0x4047ed) {
-          return Number(_0x4047ed[0]) > 0;
-        })['length'],
-        'teamCacheTtlMs': TEAM_CACHE_TTL_MS,
-        'lockedTargetId': state["lockedTarget"] && state["lockedTarget"]["targetId"] || 0,
-        'lockedBuildingId': state["lockedTarget"] && state["lockedTarget"]["buildingId"] || '',
-        'lockEngaged': !!(state["lockedTarget"] && state["lockedTarget"]["engaged"]),
-        'lockedQueueLength': state['lockQueue']['length'] + (state['lockedTarget'] ? 1 : 0),
-        'lockedTargetIds': (state['lockedTarget'] ? [state['lockedTarget']['targetId']] : [])['concat'](state['lockQueue']['map'](function (_0x4ac3bc) {
-          return _0x4ac3bc['targetId'];
+        version: VERSION,
+        cacheSize: state.teamCache.size,
+        formationCacheSize: state.formationCache.size,
+        formationCacheHits: state.formationCacheHits,
+        formationRecognitionRuns: state.formationRecognitionRuns,
+        pendingRequests: state.pending.size,
+        activeRequests: state.activeRequests.size,
+        identityMode: 'png-template-only',
+        builtInHashes: 0,
+        learnedHashes: 0,
+        learnedHashBypass: false,
+        templateCount: EMBEDDED_AVATAR_SIGNATURES.length,
+        recognizableTemplateCount: EMBEDDED_AVATAR_SIGNATURES.filter(function (it) {
+          return Number(it[0]) > 0;
+        }).length,
+        teamCacheTtlMs: TEAM_CACHE_TTL_MS,
+        lockedTargetId: (state.lockedTarget && state.lockedTarget.targetId) || 0,
+        lockedBuildingId: (state.lockedTarget && state.lockedTarget.buildingId) || '',
+        lockEngaged: !!(state.lockedTarget && state.lockedTarget.engaged),
+        lockedQueueLength: state.lockQueue.length + (state.lockedTarget ? 1 : 0),
+        lockedTargetIds: (state.lockedTarget ? [state.lockedTarget.targetId] : []).concat(state.lockQueue.map(function (it) {
+          return it.targetId;
         })),
-        'autoSpeedUp': state['autoSpeedUp'],
-        'autoAttack': true,
-        'speedUpMarchId': state['speedUpMarchId'] || 0,
-        'maxTeamCacheEntries': CACHE_LIMIT,
-        'maxLearnedImageEntries': 0,
-        'imageMatchMaxDistance': AVATAR_DISTANCE_THRESHOLD,
-        'imageMatchMinMargin': AVATAR_MARGIN_THRESHOLD,
-        'patched': state["patched"]["slice"]()
+        autoSpeedUp: state.autoSpeedUp,
+        autoAttack: true,
+        speedUpMarchId: state.speedUpMarchId || 0,
+        maxTeamCacheEntries: CACHE_LIMIT,
+        maxLearnedImageEntries: 0,
+        imageMatchMaxDistance: AVATAR_DISTANCE_THRESHOLD,
+        imageMatchMinMargin: AVATAR_MARGIN_THRESHOLD,
+        patched: state.patched.slice()
       };
     },
-    'testResponse': function (_0x341f36) {
-      var _0x12fce1 = parseTeamResponse(_0x341f36);
-      if (!Array["isArray"](_0x12fce1)) return null;
-      return buildTeamSummary({
-      },
-        _0x12fce1);
+    testResponse: function (resp) {
+      var team = parseTeamResponse(resp);
+      if (!Array.isArray(team)) return null;
+      return buildTeamSummary({}, team);
     },
-    'getImageMap': function () {
-      return {
-      };
+    getImageMap: function () { return {}; },
+    getLearnedImageMap: function () { return {}; },
+    clearLearnedImages: function () {
+      clearRecognitionCaches();
+      return api;
     },
-    'getLearnedImageMap': function () {
-      return {
-      };
+    matchImage: function (url) {
+      return matchAvatarImage(url);
     },
-    'clearLearnedImages': function () {
-      return clearRecognitionCaches(),
-        api;
-    },
-    'matchImage': function (_0x3494a0) {
-      return matchAvatarImage(_0x3494a0);
-    },
-    'learnImage': function (_0x38ad87,
-      _0x48aac4) {
-      _0x38ad87 = normalizePngDataUrl(_0x38ad87)["toLowerCase"]();
-      if (!_0x38ad87) return Promise['resolve']({
-        'cached': false,
-        'match': null
-      });
-      return matchAvatarImage(_0x48aac4)['then'](function (_0x4e448d) {
-        return {
-          'cached': false,
-          'match': _0x4e448d
-        };
+    learnImage: function (urlA, urlB) {
+      urlA = normalizePngDataUrl(urlA).toLowerCase();
+      if (!urlA) return Promise.resolve({ cached: false, match: null });
+      return matchAvatarImage(urlB).then(function (m) {
+        return { cached: false, match: m };
       });
     },
-    'identifyPlayer': function (_0x218864) {
+    identifyPlayer: function (player) {
       return {
-        'roleCodeId': getRoleCodeId(_0x218864),
-        'battlefieldId': getBattlefieldId(),
-        'cacheKey': getPlayerCacheKey(_0x218864),
-        'name': getPlayerName(_0x218864)
+        roleCodeId: getRoleCodeId(player),
+        battlefieldId: getBattlefieldId(),
+        cacheKey: getPlayerCacheKey(player),
+        name: getPlayerName(player)
       };
     },
-    'identifyFormation': function (_0x220a7f) {
-      return requestTeamSummary(_0x220a7f);
+    identifyFormation: function (player) {
+      return requestTeamSummary(player);
     },
-    'listParticipants': function () {
+    listParticipants: function () {
       return listParticipantIdentities();
     },
-    'destroy': destroy
+    destroy: destroy
   };
-  window[GLOBAL_KEY] = api,
-    start(),
-    window['SaltQueueFormationLocker'] = window[GLOBAL_KEY];
-  logInfo("已加载：黑鬼盐场锁头增强版（支持战力/精力/到达时间排序、敌人行军倒计时实时显示、精准锁头、自动开战与自动刨地）。");
-}
-  ());
+
+  window[GLOBAL_KEY] = api;
+  start();
+  window.SaltQueueFormationLocker = window[GLOBAL_KEY];
+  logInfo('已加载：黑鬼盐场锁头增强清晰源码版（支持战力/精力/到达时间排序、敌人行军倒计时实时显示、精准锁头、自动开战与自动刨地）。');
+})();
