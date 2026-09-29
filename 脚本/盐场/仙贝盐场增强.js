@@ -6104,31 +6104,7 @@
 
   function patchAll() {
     if (!hasGameRequire()) return false;
-    patchRankingPage();
-    return patchTroopsPage('AttackTroopsPage', 'AttackTroopsPage') &&
-      patchTroopsPage('DefenseTroopsPage', 'DefenseTroopsPage') &&
-      patchBuildingPanel() &&
-      isTroopsPagePatched('AttackTroopsPage', 'AttackTroopsPage') &&
-      isTroopsPagePatched('DefenseTroopsPage', 'DefenseTroopsPage') &&
-      isBuildingPanelPatched();
-  }
-
-  function removeLegacySaltTagsUi() {
-    try {
-      if (window.SaltFieldTargetTags && typeof window.SaltFieldTargetTags.destroy === 'function') {
-        window.SaltFieldTargetTags.destroy();
-      }
-    } catch (e) {}
-    ['salt-tags-ui', 'salt-tags-mini', 'salt-tags-style'].forEach(function (id) {
-      var el = document.getElementById(id);
-      if (el && el.parentNode) el.parentNode.removeChild(el);
-    });
-  }
-
-  
-    function patchAll() {
-    if (!hasGameRequire()) return false;
-    patchRankingPage();
+    if (!isRankingPagePatched()) patchRankingPage();
     return patchTroopsPage('AttackTroopsPage', 'AttackTroopsPage') &&
       patchTroopsPage('DefenseTroopsPage', 'DefenseTroopsPage') &&
       patchBuildingPanel() &&
