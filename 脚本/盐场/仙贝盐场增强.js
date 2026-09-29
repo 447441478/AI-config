@@ -1328,10 +1328,40 @@
       }
       logInfo('标记盟友俱乐部:', name || numId);
       showCountdownMessage('已结盟俱乐部【' + (name || numId) + '】', -1);
+      purgeAlliedTargetsFromLockQueue(name || numId);
     }
     saveAlliedLegions();
     refreshAllTroopsOverlay();
     if (typeof refreshPanelUI === 'function') refreshPanelUI();
+  }
+
+  function purgeAlliedTargetsFromLockQueue(allyLabel) {
+    var purgedCount = 0;
+    if (state.lockedTarget) {
+      var curTarget = state.lockedTarget.target || (typeof getPlayerById === 'function' && getPlayerById(state.lockedTarget.targetId));
+      if (curTarget && isAlliedPlayer(curTarget)) {
+        logInfo('检测到当前锁定目标属于新结盟俱乐部，立即解除锁定:', allyLabel);
+        clearLockedTarget();
+        purgedCount++;
+      }
+    }
+    if (Array.isArray(state.lockQueue) && state.lockQueue.length > 0) {
+      var beforeLen = state.lockQueue.length;
+      state.lockQueue = state.lockQueue.filter(function (it) {
+        var p = it && (it.target || (typeof getPlayerById === 'function' && getPlayerById(it.targetId)));
+        return !p || !isAlliedPlayer(p);
+      });
+      var removed = beforeLen - state.lockQueue.length;
+      if (removed > 0) {
+        purgedCount += removed;
+        logInfo('已从锁定队列中剔除属于新结盟俱乐部的目标数:', removed);
+      }
+    }
+    if (purgedCount > 0) {
+      showCountdownMessage('已自动清退 ' + purgedCount + ' 个新盟友目标', -1);
+      if (typeof refreshLockControls === 'function') refreshLockControls();
+      if (typeof refreshPanelUI === 'function') refreshPanelUI();
+    }
   }
 
   function isAlliedPlayer(player) {
@@ -1817,10 +1847,20 @@
     return '';
   }
 
+  function getBuildingTroopList(building, type) {
+    if (!building) return [];
+    if (type === 'attack') {
+      return (Array.isArray(building.attackerList) && building.attackerList) ||
+        (Array.isArray(building.attackList) && building.attackList) || [];
+    }
+    return (Array.isArray(building.defenderList) && building.defenderList) ||
+      (Array.isArray(building.defenseList) && building.defenseList) || [];
+  }
+
   function findTargetInBuildingQueues(building, targetId) {
     var queueGroups = [
-      ['attack', building && building.attackerList],
-      ['defense', building && building.defenderList]
+      ['attack', getBuildingTroopList(building, 'attack')],
+      ['defense', getBuildingTroopList(building, 'defense')]
     ];
     for (var g = 0; g < queueGroups.length; g++) {
       var qList = queueGroups[g][1];
@@ -2261,7 +2301,11 @@
     });
 
     var totalCount = 5;
-    var label = (cachedSummary && cachedSummary.label) || classifyFormation(heroNames, aliveCount, totalCount, player && player.formationType);
+    var currentLabel = classifyFormation(heroNames, aliveCount, totalCount, player && player.formationType);
+    var isMeaningfulLabel = currentLabel && currentLabel !== '未知' && currentLabel !== '其他';
+    var cachedLabel = cachedSummary && cachedSummary.label;
+    var isMeaningfulCachedLabel = cachedLabel && cachedLabel !== '未知' && cachedLabel !== '其他';
+    var label = isMeaningfulLabel ? currentLabel : (isMeaningfulCachedLabel ? cachedLabel : currentLabel);
     if (!heroNames.length && cachedSummary && cachedSummary.heroNames) heroNames = cachedSummary.heroNames.slice();
     if (!heroIds.length && cachedSummary && cachedSummary.heroIds) heroIds = cachedSummary.heroIds.slice();
 
@@ -4318,14 +4362,20 @@
 
     // 4. 当前锁定主目标卡片渲染
     if (!state.lockedTarget) {
-      d.primaryWrap.innerHTML = [
-        '<div class="hg-lock-empty">',
-        '  暂无锁定目标<br>',
-        '  <span style="font-size:11px; color:#64748b;">可在部队列表中点击【锁定】加入战术队列</span>',
-        '</div>'
-      ].join('');
+      if (d.primaryWrap.getAttribute('data-target-id')) {
+        d.primaryWrap.removeAttribute('data-target-id');
+      }
+      if (d.primaryWrap.innerHTML.indexOf('hg-lock-empty') < 0) {
+        d.primaryWrap.innerHTML = [
+          '<div class="hg-lock-empty">',
+          '  暂无锁定目标<br>',
+          '  <span style="font-size:11px; color:#64748b;">可在部队列表中点击【锁定】加入战术队列</span>',
+          '</div>'
+        ].join('');
+      }
     } else {
       var lockRecord = state.lockedTarget;
+      var curTId = String(lockRecord.targetId);
       var targetPlayer = getPlayerById(lockRecord.targetId) || lockRecord.target;
       var targetName = (targetPlayer && getPlayerName(targetPlayer)) || ('ID:' + lockRecord.targetId);
       var roleCode = targetPlayer ? getRoleCodeId(targetPlayer) : lockRecord.targetId;
@@ -4333,95 +4383,111 @@
       var statusDesc = lockRecord.waitingForTarget ? '行军赶往目标' : (lockRecord.returning ? '返回原建筑' : (lockRecord.engaged ? '正在交战' : '驻守/就位'));
       var initialCountdown = state.panelCountdownMsg || (state.panelCountdownSec > 0 ? ('剩余 ' + state.panelCountdownSec + ' 秒') : '已就位待命');
 
-      d.primaryWrap.innerHTML = [
-        '<div class="hg-lock-card">',
-        '  <div class="hg-lock-card-header">',
-        '    <span class="hg-lock-target-name">🎯 ' + targetName + '</span>',
-        '    <span class="hg-lock-badge">' + statusDesc + '</span>',
-        '  </div>',
-        '  <div class="hg-lock-detail-row">',
-        '    <span>玩家ID: ' + roleCode + '</span>',
-        '    <span>目标: ' + destName + '</span>',
-        '  </div>',
-        '  <div class="hg-lock-countdown-row">',
-        '    <span>⏱️ 倒计时:</span>',
-        '    <span class="hg-lock-countdown-sec" id="hg-primary-countdown-text">' + initialCountdown + '</span>',
-        '  </div>',
-        '  <div class="hg-btn-row">',
-        '    <button class="hg-btn-primary" id="hg-btn-attack-now">⚔️ 立即攻击</button>',
-        '    <button class="hg-btn-danger" id="hg-btn-cancel-target">✕ 取消锁定</button>',
-        '  </div>',
-        '</div>'
-      ].join('');
+      var prevTargetId = d.primaryWrap.getAttribute('data-target-id');
+      if (prevTargetId === curTId) {
+        // 增量极速更新变动文本节点，彻底杜绝 DOM 重构引起的点击偶发丢失与 GC 抖动
+        var badgeEl = d.primaryWrap.querySelector('.hg-lock-badge');
+        if (badgeEl && badgeEl.textContent !== statusDesc) badgeEl.textContent = statusDesc;
+        var countdownEl = d.primaryWrap.querySelector('#hg-primary-countdown-text');
+        if (countdownEl && countdownEl.textContent !== initialCountdown) countdownEl.textContent = initialCountdown;
+      } else {
+        d.primaryWrap.setAttribute('data-target-id', curTId);
+        d.primaryWrap.innerHTML = [
+          '<div class="hg-lock-card">',
+          '  <div class="hg-lock-card-header">',
+          '    <span class="hg-lock-target-name">🎯 ' + targetName + '</span>',
+          '    <span class="hg-lock-badge">' + statusDesc + '</span>',
+          '  </div>',
+          '  <div class="hg-lock-detail-row">',
+          '    <span>玩家ID: ' + roleCode + '</span>',
+          '    <span>目标: ' + destName + '</span>',
+          '  </div>',
+          '  <div class="hg-lock-countdown-row">',
+          '    <span>⏱️ 倒计时:</span>',
+          '    <span class="hg-lock-countdown-sec" id="hg-primary-countdown-text">' + initialCountdown + '</span>',
+          '  </div>',
+          '  <div class="hg-btn-row">',
+          '    <button class="hg-btn-primary" id="hg-btn-attack-now">⚔️ 立即攻击</button>',
+          '    <button class="hg-btn-danger" id="hg-btn-cancel-target">✕ 取消锁定</button>',
+          '  </div>',
+          '</div>'
+        ].join('');
 
-      var btnAttack = d.primaryWrap.querySelector('#hg-btn-attack-now');
-      var btnCancel = d.primaryWrap.querySelector('#hg-btn-cancel-target');
-      if (btnAttack) {
-        btnAttack.addEventListener('click', function () {
-          runLockedAttack();
-          refreshPanelUI();
-        });
-      }
-      if (btnCancel) {
-        btnCancel.addEventListener('click', function () {
-          clearLockedTarget();
-          refreshPanelUI();
-        });
+        var btnAttack = d.primaryWrap.querySelector('#hg-btn-attack-now');
+        var btnCancel = d.primaryWrap.querySelector('#hg-btn-cancel-target');
+        if (btnAttack) {
+          btnAttack.addEventListener('click', function () {
+            runLockedAttack();
+            refreshPanelUI();
+          });
+        }
+        if (btnCancel) {
+          btnCancel.addEventListener('click', function () {
+            clearLockedTarget();
+            refreshPanelUI();
+          });
+        }
       }
     }
 
-    // 5. 候补排队列表渲染
-    if (!state.lockQueue || state.lockQueue.length === 0) {
-      d.queueWrap.innerHTML = '';
-    } else {
-      var queueHtml = ['<div class="hg-queue-list">'];
-      state.lockQueue.forEach(function (qItem, idx) {
-        var p = getPlayerById(qItem.targetId) || qItem.target;
-        var pName = (p && getPlayerName(p)) || ('ID:' + qItem.targetId);
-        queueHtml.push(
-          '<div class="hg-queue-item">',
-          '  <div class="hg-queue-info">',
-          '    <span class="hg-queue-idx">#' + (idx + 1) + '</span>',
-          '    <span>' + pName + '</span>',
-          '  </div>',
-          '  <div class="hg-queue-actions">',
-          '    <button class="hg-queue-btn top" data-idx="' + idx + '">↑置顶</button>',
-          '    <button class="hg-queue-btn del" data-idx="' + idx + '">✕移除</button>',
-          '  </div>',
-          '</div>'
-        );
-      });
-      queueHtml.push('</div>');
-      d.queueWrap.innerHTML = queueHtml.join('');
+    // 5. 候补排队列表渲染（增量指纹比对）
+    var currentQueueHash = (state.lockQueue || []).map(function (q) { return q.targetId; }).join('|');
+    if (state.lastRenderedQueueHash !== currentQueueHash) {
+      state.lastRenderedQueueHash = currentQueueHash;
+      if (!state.lockQueue || state.lockQueue.length === 0) {
+        d.queueWrap.innerHTML = '';
+      } else {
+        var queueHtml = ['<div class="hg-queue-list">'];
+        state.lockQueue.forEach(function (qItem, idx) {
+          var p = getPlayerById(qItem.targetId) || qItem.target;
+          var pName = (p && getPlayerName(p)) || ('ID:' + qItem.targetId);
+          queueHtml.push(
+            '<div class="hg-queue-item">',
+            '  <div class="hg-queue-info">',
+            '    <span class="hg-queue-idx">#' + (idx + 1) + '</span>',
+            '    <span>' + pName + '</span>',
+            '  </div>',
+            '  <div class="hg-queue-actions">',
+            '    <button class="hg-queue-btn top" data-idx="' + idx + '">↑置顶</button>',
+            '    <button class="hg-queue-btn del" data-idx="' + idx + '">✕移除</button>',
+            '  </div>',
+            '</div>'
+          );
+        });
+        queueHtml.push('</div>');
+        d.queueWrap.innerHTML = queueHtml.join('');
 
-      d.queueWrap.querySelectorAll('.hg-queue-btn.top').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          var idx = Number(btn.getAttribute('data-idx'));
-          if (idx >= 0 && idx < state.lockQueue.length) {
-            var item = state.lockQueue.splice(idx, 1)[0];
-            if (state.lockedTarget) {
-              state.lockQueue.unshift(state.lockedTarget);
+        d.queueWrap.querySelectorAll('.hg-queue-btn.top').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var idx = Number(btn.getAttribute('data-idx'));
+            if (idx >= 0 && idx < state.lockQueue.length) {
+              var item = state.lockQueue.splice(idx, 1)[0];
+              if (state.lockedTarget) {
+                state.lockQueue.unshift(state.lockedTarget);
+              }
+              state.lockedTarget = item;
+              state.lastLockActionAt = 0;
+              state.lastRenderedQueueHash = '';
+              hideMarchCountdown();
+              refreshLockControls();
+              refreshPanelUI();
+              runLockedAttack();
             }
-            state.lockedTarget = item;
-            state.lastLockActionAt = 0;
-            hideMarchCountdown();
-            refreshLockControls();
-            refreshPanelUI();
-            runLockedAttack();
-          }
+          });
         });
-      });
 
-      d.queueWrap.querySelectorAll('.hg-queue-btn.del').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          var idx = Number(btn.getAttribute('data-idx'));
-          if (idx >= 0 && idx < state.lockQueue.length) {
-            state.lockQueue.splice(idx, 1);
-            refreshLockControls();
-            refreshPanelUI();
-          }
+        d.queueWrap.querySelectorAll('.hg-queue-btn.del').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var idx = Number(btn.getAttribute('data-idx'));
+            if (idx >= 0 && idx < state.lockQueue.length) {
+              state.lockQueue.splice(idx, 1);
+              state.lastRenderedQueueHash = '';
+              refreshLockControls();
+              refreshPanelUI();
+            }
+          });
         });
-      });
+      }
     }
 
     // 6. 页脚运行态
@@ -4822,15 +4888,26 @@
   }
 
   function updateAllVisibleMarchCountdowns() {
-    if (state.destroyed || !state.items || !state.items.length) return;
-    for (var i = state.items.length - 1; i >= 0; i--) {
-      var it = state.items[i];
-      if (!it || it.isDisposed || it._disposed || !it.parent) {
-        state.items.splice(i, 1);
-        continue;
+    if (state.destroyed) return;
+    if (state.items && state.items.length) {
+      for (var i = state.items.length - 1; i >= 0; i--) {
+        var it = state.items[i];
+        if (!it || it.isDisposed || it._disposed || !it.parent) {
+          state.items.splice(i, 1);
+          continue;
+        }
+        if (it.__saltQueuePlayer) {
+          updateItemMarchCountdown(it, it.__saltQueuePlayer);
+        }
       }
-      if (it.__saltQueuePlayer) {
-        updateItemMarchCountdown(it, it.__saltQueuePlayer);
+    }
+    if (Array.isArray(state.sortBars) && state.sortBars.length) {
+      for (var b = state.sortBars.length - 1; b >= 0; b--) {
+        var sb = state.sortBars[b];
+        var rootNode = sb && (sb.root || sb.label || sb.restore);
+        if (!sb || (rootNode && (rootNode.isDisposed || rootNode._disposed || !rootNode.parent))) {
+          state.sortBars.splice(b, 1);
+        }
       }
     }
   }
@@ -5422,8 +5499,8 @@
     var candidates = [];
     var seenIds = {};
     var lists = [
-      curBuilding.defenseList || curBuilding.defenderList || [],
-      curBuilding.attackList || curBuilding.attackerList || []
+      getBuildingTroopList(curBuilding, 'defense'),
+      getBuildingTroopList(curBuilding, 'attack')
     ];
 
     lists.forEach(function (list) {
@@ -5490,7 +5567,7 @@
         if (isIdleState(selfPlayer)) {
           logInfo('当前锁定目标战斗结束，切换下一个。');
           clearLockedTarget();
-          if (state.lockedTarget) runLockedAttack();
+          if (state.lockedTarget) window.setTimeout(runLockedAttack, 0);
         }
         return;
       }
@@ -5504,7 +5581,7 @@
       if (lockTarget.failedAttempts >= 3) {
         logInfo('目标连续3次开战失败（可能受限或无法攻击），放弃该目标切换下一个。');
         clearLockedTarget();
-        if (state.lockedTarget) runLockedAttack();
+        if (state.lockedTarget) window.setTimeout(runLockedAttack, 0);
         return;
       }
     }
@@ -5513,7 +5590,7 @@
     if (!targetPlayer || isDeadState(targetPlayer)) {
       logInfo('锁定目标已离场，切换下一个。');
       clearLockedTarget();
-      if (state.lockedTarget) runLockedAttack();
+      if (state.lockedTarget) window.setTimeout(runLockedAttack, 0);
       return;
     }
 
@@ -5749,8 +5826,8 @@
     // 1. 扫描当前所在建筑的驻防与进攻队列
     var curB = selfPlayer.curBuilding;
     if (curB) {
-      ['attackerList', 'defenderList'].forEach(function (prop) {
-        var list = curB[prop];
+      ['attack', 'defense'].forEach(function (type) {
+        var list = getBuildingTroopList(curB, type);
         if (Array.isArray(list)) {
           list.forEach(function (item) {
             addCandidate(item && item.player ? item.player : item);
