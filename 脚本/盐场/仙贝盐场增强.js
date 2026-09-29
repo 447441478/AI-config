@@ -1,5 +1,5 @@
 /*
- * 黑鬼盐场增强_v2.2.0.js (HeiGuiSaltEnhancer / HeiGuiSaltLocker)
+ * 仙贝盐场增强.js (XianBeiSaltEnhancer)
  * 
  * 深度融合【黑鬼盐场增强 v2.0.0】与【黑鬼盐场锁头 v2.1.0 悬浮面板版】：
  * ============================================================================
@@ -1209,6 +1209,7 @@
       ids: [],
       names: []
     },
+    lastRenderedAlliesHash: '',
 
     // 列表排序状态
     sortMode: savedCfg.sortMode || 'power',
@@ -1276,6 +1277,7 @@
   function clearAlliedLegions() {
     var today = getTodayDateKey();
     state.alliedLegions = { date: today, ids: [], names: [] };
+    state.lastRenderedAlliesHash = '';
     saveAlliedLegions();
     refreshAllTroopsOverlay();
     if (typeof refreshPanelUI === 'function') refreshPanelUI();
@@ -1494,7 +1496,7 @@
 
   function logInfo() {
     var args = Array.prototype.slice.call(arguments);
-    args.unshift('[黑鬼盐场锁头]');
+    args.unshift('[仙贝盐场增强]');
     console.log.apply(console, args);
   }
 
@@ -3252,6 +3254,7 @@
     '  position: fixed;',
     '  width: 320px;',
     '  max-width: calc(100vw - 20px);',
+    '  max-height: 84%;',
     '  max-height: 84vh;',
     '  border-radius: 14px;',
     '  background: rgba(15, 23, 42, 0.94);',
@@ -3323,6 +3326,9 @@
     '.hg-panel-body {',
     '  padding: 12px;',
     '  overflow-y: auto;',
+    '  flex: 1;',
+    '  min-height: 0;',
+    '  max-height: calc(100% - 48px);',
     '  max-height: calc(84vh - 48px);',
     '  display: flex;',
     '  flex-direction: column;',
@@ -3713,8 +3719,8 @@
       '  <div class="hg-panel-header">',
       '    <div class="hg-panel-title-wrap">',
       '      <span style="font-size:16px;">🎯</span>',
-      '      <span class="hg-panel-title">黑鬼盐场锁头</span>',
-      '      <span class="hg-panel-tag">v2.1.0</span>',
+      '      <span class="hg-panel-title">仙贝盐场增强</span>',
+      '      <span class="hg-panel-tag">v2.2.0</span>',
       '    </div>',
       '    <div class="hg-panel-close-btn" id="hg-close-btn">×</div>',
       '  </div>',
@@ -3911,17 +3917,22 @@
     if (!state.domHub || !state.domHub.panel || !state.domHub.trigger) return;
     var triggerRect = state.domHub.trigger.getBoundingClientRect();
     var triggerW = triggerRect.width || 36;
-    var panelW = 320;
-    var screenW = window.innerWidth;
-    var screenH = window.innerHeight;
+    var screenW = window.innerWidth || (document.documentElement && document.documentElement.clientWidth) || 360;
+    var screenH = window.innerHeight || (document.documentElement && document.documentElement.clientHeight) || 580;
+
+    // 自适应面板宽度与最大高度（深度兼容分屏、矩阵多开、横屏与低高小窗，根除 100vh 塌陷）
+    var panelW = Math.min(320, Math.max(260, screenW - 20));
+    var maxH = Math.max(220, Math.floor(screenH * 0.86));
+    state.domHub.panel.style.width = panelW + 'px';
+    state.domHub.panel.style.maxHeight = maxH + 'px';
 
     var panelLeft, panelTop;
     if (triggerRect.left + triggerW / 2 < screenW / 2) {
-      panelLeft = Math.min(screenW - panelW - 10, triggerRect.right + 10);
+      panelLeft = Math.max(8, Math.min(screenW - panelW - 8, triggerRect.right + 8));
     } else {
-      panelLeft = Math.max(10, triggerRect.left - panelW - 10);
+      panelLeft = Math.max(8, triggerRect.left - panelW - 8);
     }
-    panelTop = Math.max(10, Math.min(screenH - 460, triggerRect.top - 10));
+    panelTop = Math.max(8, Math.min(screenH - maxH - 8, triggerRect.top - 10));
 
     state.domHub.panel.style.left = panelLeft + 'px';
     state.domHub.panel.style.top = panelTop + 'px';
@@ -4280,21 +4291,26 @@
     }
     if (d.allyWrap) {
       var allyNames = (state.alliedLegions && state.alliedLegions.names) || [];
-      if (allyNames.length === 0) {
-        d.allyWrap.innerHTML = '<span style="font-size:11px; color:#64748b;">今日暂无结盟俱乐部</span>';
-      } else {
-        d.allyWrap.innerHTML = allyNames.map(function (n) {
-          return '<span class="hg-chip is-active" style="padding:2px 7px; font-size:10px; border-color:#10b981 !important; color:#34d399 !important; background:rgba(16,185,129,0.2) !important;" title="点击解除结盟" data-ally="' + n + '">' + n + ' ✕</span>';
-        }).join('');
-        var chips = d.allyWrap.querySelectorAll('[data-ally]');
-        chips.forEach(function (c) {
-          c.addEventListener('click', function (e) {
-            if (e) e.stopPropagation();
-            var targetName = c.getAttribute('data-ally');
-            toggleAlliedLegion(0, targetName);
-            refreshPanelUI();
+      var currentAllyHash = allyNames.slice().sort().join('|');
+      if (state.lastRenderedAlliesHash !== currentAllyHash) {
+        state.lastRenderedAlliesHash = currentAllyHash;
+        if (allyNames.length === 0) {
+          d.allyWrap.innerHTML = '<span style="font-size:11px; color:#64748b;">今日暂无结盟俱乐部</span>';
+        } else {
+          d.allyWrap.innerHTML = allyNames.map(function (n) {
+            return '<span class="hg-chip is-active" style="padding:2px 7px; font-size:10px; border-color:#10b981 !important; color:#34d399 !important; background:rgba(16,185,129,0.2) !important;" title="点击解除结盟" data-ally="' + n + '">' + n + ' ✕</span>';
+          }).join('');
+          var chips = d.allyWrap.querySelectorAll('[data-ally]');
+          chips.forEach(function (c) {
+            c.addEventListener('click', function (e) {
+              if (e) e.stopPropagation();
+              var targetName = c.getAttribute('data-ally');
+              toggleAlliedLegion(0, targetName);
+              state.lastRenderedAlliesHash = '';
+              refreshPanelUI();
+            });
           });
-        });
+        }
       }
     }
     // 3. 锁定队列与角标
@@ -5070,7 +5086,6 @@
 
   function runAutoBuildingAttack(mod, selfPlayer) {
     if (!state.autoDig || state.lockedTarget || state.lockQueue.length || !mod || !selfPlayer) return;
-    if (mod.isAutoAttack !== undefined) mod.isAutoAttack = true;
 
     var curB = selfPlayer.curBuilding;
     if (!curB || !curB.inBuilding || !curB.canAttackBuilding || !isIdleState(selfPlayer) || typeof mod.sendStartAttackBuilding !== 'function') return;
@@ -5587,7 +5602,8 @@
       if (lockTarget.targetLeft) {
         if (inDestBuilding && promoteQueuedTargetAtCurrentBuilding(selfPlayer, false, false)) {
           logInfo('离开的锁定目标已跳过，继续处理当前建筑内的其他锁定目标。');
-          return runLockedAttack();
+          window.setTimeout(runLockedAttack, 0);
+          return;
         }
         if (inDestBuilding && !lockTarget.returning) {
           if (lockTarget.originPosition && typeof mod.sendStartMarch === 'function' && now - (lockTarget.lastActionAt || 0) >= 1200 && mod.sendStartMarch(lockTarget.originPosition)) {
@@ -5615,7 +5631,8 @@
       // 若当前目标被抢先攻击，提升处理下一个未开战的目标
       if (!queueTarget && (currentBattle || isCombatState(targetPlayer)) && promoteQueuedTargetAtCurrentBuilding(selfPlayer, true, true)) {
         logInfo('当前锁定目标已被其他玩家攻击，优先处理下一个未开战目标。');
-        return runLockedAttack();
+        window.setTimeout(runLockedAttack, 0);
+        return;
       }
 
       if (!queueTarget && currentBattle) {
@@ -5669,18 +5686,27 @@
     var selectedFormations = state.autoTargetFormations || [];
     var matchFormation = selectedFormations.length === 0 || selectedFormations.indexOf(summary.label) >= 0;
     var isWounded = Number(summary.alive) <= Number(state.autoTargetWoundedLimit || 2);
-    var matchWounded = !state.autoTargetWoundedOnly || isWounded;
+    var hasFormationFilter = selectedFormations.length > 0;
+    var hasWoundedFilter = !!state.autoTargetWoundedOnly;
 
-    // 依据匹配策略进行判定
+    // 依据匹配策略进行判定（修复 both 模式下残将未开启时误拦截满血克制阵容的缺陷）
     var isMatch = false;
     if (state.autoTargetMatchMode === 'both') {
-      isMatch = matchFormation && isWounded;
-    } else {
-      if (state.autoTargetWoundedOnly && selectedFormations.length > 0) {
-        isMatch = matchFormation || isWounded;
-      } else if (state.autoTargetWoundedOnly) {
+      if (hasFormationFilter && hasWoundedFilter) {
+        isMatch = matchFormation && isWounded;
+      } else if (hasWoundedFilter) {
         isMatch = isWounded;
-      } else if (selectedFormations.length > 0) {
+      } else if (hasFormationFilter) {
+        isMatch = matchFormation;
+      } else {
+        isMatch = true;
+      }
+    } else {
+      if (hasFormationFilter && hasWoundedFilter) {
+        isMatch = matchFormation || isWounded;
+      } else if (hasWoundedFilter) {
+        isMatch = isWounded;
+      } else if (hasFormationFilter) {
         isMatch = matchFormation;
       } else {
         isMatch = true;
@@ -6163,7 +6189,10 @@
       var selfPlayer = bf && bf.self;
       var hasLock = !!(state.lockedTarget || (state.lockQueue && state.lockQueue.length));
 
-      // 原生 isAutoAttack 安全保护：仅在锁头期间临时关闭；退出锁头时精准无损还原用户原本设置
+      // 原生 isAutoAttack 安全保护与双向托管体系：
+      // 1. 锁头期间：强制设为 false（防止原生乱打），并首拍暂存用户原设置
+      // 2. 自动刨地期间（无锁头）：设为 true 驱动攻打建筑，同样首拍暂存用户原设置
+      // 3. 闲置状态（无锁头且未刨地）：精准无损还原回用户的原始意图 userAutoAttack
       if (mod && mod.isAutoAttack !== undefined) {
         if (hasLock) {
           if (state.userAutoAttack === null) {
@@ -6171,6 +6200,13 @@
           }
           if (mod.isAutoAttack) {
             mod.isAutoAttack = false;
+          }
+        } else if (state.autoDig) {
+          if (state.userAutoAttack === null) {
+            state.userAutoAttack = !!mod.isAutoAttack;
+          }
+          if (!mod.isAutoAttack) {
+            mod.isAutoAttack = true;
           }
         } else {
           if (state.userAutoAttack !== null) {
@@ -6392,10 +6428,11 @@
   };
 
   window[GLOBAL_KEY] = api;
+  window.XianBeiSaltEnhancer = api;
   window.HeiGuiSaltEnhancer = api;
   window.HeiGuiSaltLocker = api;
   window.SaltQueueEnhancer = api;
   window.SaltQueueFormationLocker = api;
   start();
-  logInfo('已加载：黑鬼盐场增强 v2.2.0 旗舰版（集成现代毛玻璃战术面板、智能阵型巡航锁头、离线特征库与排行榜盟友联动）。');
+  logInfo('已加载：仙贝盐场增强 v2.2.0（集成现代毛玻璃战术面板、智能阵型巡航锁头、离线特征库与排行榜盟友联动）。');
 })();
