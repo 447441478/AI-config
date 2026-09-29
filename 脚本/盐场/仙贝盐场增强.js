@@ -1,3 +1,14 @@
+// ==UserScript==
+// @name         仙贝盐场增强
+// @namespace    xianbei-builtin
+// @version      2.2.0
+// @description  仙贝专属盐场战术指挥中枢：智能锁头、残将收割、排行榜盟友免伤与暗黑控制中心
+// @author       仙贝助手
+// @match        *://*/*
+// @grant        none
+// @run-at       document-start
+// ==/UserScript==
+
 /*
  * 仙贝盐场增强.js (XianBeiSaltEnhancer)
  * 
