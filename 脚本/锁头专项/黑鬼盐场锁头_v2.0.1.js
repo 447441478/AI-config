@@ -1,5 +1,5 @@
 /*
- * 黑鬼盐场锁头_v2.0.0_清晰源码.js (HeiGuiSaltLocker)
+ * 黑鬼盐场锁头_v2.0.1.js (HeiGuiSaltLocker)
  * 
  * 基于新锁头盐场阵容，采用现代化分层架构彻底重构反混淆。
  * 代码结构清晰、职责边界分明、易读性高，兼具工业级健壮性。
@@ -26,7 +26,7 @@
    * 1. CONFIG & DICTS (基础配置、武将字典、阵型正则与离线特征库)
    * ============================================================================ */
   var GLOBAL_KEY = 'HeiGuiSaltLocker';
-  var VERSION = '20260924-v2.0.0';
+  var VERSION = '20260927-v2.0.1';
 
   // 图像特征比对算法参数
   var AVATAR_SIGNATURE_WIDTH = 8;
@@ -2930,8 +2930,8 @@
   // 创建原生 UI 按钮（优先复用 ui_common.BtnInfo2 原生木质组件，带 Cocos 立体投影与按压反馈）
   function makeNativeSortButton(fg, text, onClick, width, height) {
     if (!fg) fg = getFgui();
-    var w = width || 62;
-    var h = height || 30;
+    var w = width || 48;
+    var h = height || 25;
     var btn = null;
 
     // 1. 尝试从游戏原生包创建 BtnInfo2（自带木质纹理与按压缩放反馈）
@@ -2960,7 +2960,7 @@
       var nativeLabel = new fg.GTextField();
       nativeLabel.name = 'customLabel';
       nativeLabel.text = text;
-      nativeLabel.fontSize = 15;
+      nativeLabel.fontSize = 13;
       nativeLabel.bold = true;
       nativeLabel.color = '#fff4df';
       nativeLabel.align = 'center';
@@ -3055,17 +3055,6 @@
     var list = ui.m_list || (typeof ui.getChild === 'function' && (ui.getChild('m_list') || ui.getChild('list')));
 
     if (!page.__sfaSortBar) {
-      var label = new fg.GTextField();
-      label.text = '排序:';
-      label.fontSize = 15;
-      label.bold = true;
-      label.color = '#8f4024';
-      label.align = 'right';
-      label.verticalAlign = 'middle';
-      label.singleLine = true;
-      label.touchable = false;
-      setNodeSize(label, 36, 30);
-
       var energy = makeNativeSortButton(fg, '精力', function () {
         if (state.sortMode === 'energy') {
           state.sortOrder = state.sortOrder === 'asc' ? 'desc' : 'asc';
@@ -3075,7 +3064,7 @@
         }
         updateNativeSortButtons(page);
         requestSortTroopsList(page);
-      }, 62, 30);
+      }, 48, 25);
 
       var power = makeNativeSortButton(fg, '战力', function () {
         if (state.sortMode === 'power') {
@@ -3086,44 +3075,44 @@
         }
         updateNativeSortButtons(page);
         requestSortTroopsList(page);
-      }, 62, 30);
+      }, 48, 25);
 
       var marchTime = makeNativeSortButton(fg, '到达', function () {
         state.sortMode = 'marchTime';
         state.sortOrder = 'asc';
         updateNativeSortButtons(page);
         requestSortTroopsList(page);
-      }, 62, 30);
+      }, 48, 25);
 
       var restore = makeNativeSortButton(fg, '还原', function () {
         state.sortMode = 'default';
         state.sortOrder = 'desc';
         updateNativeSortButtons(page);
         requestSortTroopsList(page);
-      }, 50, 30);
+      }, 48, 25);
 
-      ui.addChild(label);
       ui.addChild(energy);
       ui.addChild(power);
       ui.addChild(marchTime);
       ui.addChild(restore);
-      page.__sfaSortBar = { label: label, energy: energy, power: power, marchTime: marchTime, restore: restore };
+      page.__sfaSortBar = { energy: energy, power: power, marchTime: marchTime, restore: restore };
       if (Array.isArray(state.sortBars)) {
         state.sortBars.push(page.__sfaSortBar);
       }
     }
 
-    // 紧凑排版：总宽 290px，整体右对齐，彻底避让左侧驻扎部队数量文本与分屏裁剪
-    var y = Math.max(0, Number(list ? list.y : 270) - 38);
-    var right = Number(ui.width || 720) - 16;
-    var restoreX = right - 50;
-    var marchTimeX = restoreX - 62 - 5;
-    var powerX = marchTimeX - 62 - 5;
-    var energyX = powerX - 62 - 5;
-    var labelX = energyX - 36 - 4;
+    // 靠左排版：锚定列表卡片左边缘（list.x + 4），纵向居中对齐横梁（list.y - 48），彻底杜绝右侧木柱撞墙与下垂压线
+    var btnW = 48;
+    var gap = 4;
+    var startX = Math.max(60, Number(list ? list.x : 65) + 4);
+    var y = Math.max(0, Number(list ? list.y : 270) - 48);
+
+    var energyX    = startX;
+    var powerX     = energyX + btnW + gap;
+    var marchTimeX = powerX + btnW + gap;
+    var restoreX   = marchTimeX + btnW + gap;
 
     var bar = page.__sfaSortBar;
-    setNodePos(bar.label, labelX, y);
     setNodePos(bar.energy, energyX, y);
     setNodePos(bar.power, powerX, y);
     setNodePos(bar.marchTime, marchTimeX, y);
