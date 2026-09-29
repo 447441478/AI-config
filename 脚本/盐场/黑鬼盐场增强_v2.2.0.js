@@ -1,5 +1,5 @@
 /*
- * 黑鬼盐场增强_v2.2.0_全功能旗舰版.js (HeiGuiSaltEnhancer / HeiGuiSaltLocker)
+ * 黑鬼盐场增强_v2.2.0.js (HeiGuiSaltEnhancer / HeiGuiSaltLocker)
  * 
  * 深度融合【黑鬼盐场增强 v2.0.0】与【黑鬼盐场锁头 v2.1.0 悬浮面板版】：
  * ============================================================================
