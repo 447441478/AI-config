@@ -30,13 +30,13 @@
   /* ============================================================================
    * 1. CONFIG & DICTS (基础配置、武将字典、阵型正则与离线特征库)
    * ============================================================================ */
-  var GLOBAL_KEY = 'HeiGuiSaltEnhancer';
+  var GLOBAL_KEY = 'XianBeiSaltEnhancer';
   var VERSION = '20260929-v2.2.0-ultimate';
-  var STORAGE_KEY = 'HEIGUI_SALT_CONFIG_V2';
+  var STORAGE_KEY = 'XIANBEI_SALT_CONFIG_V2';
 
   function loadConfig() {
     try {
-      var raw = localStorage.getItem(STORAGE_KEY);
+      var raw = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('HEIGUI_SALT_CONFIG_V2');
       if (raw) return JSON.parse(raw) || {};
     } catch (e) {}
     return {};
@@ -64,24 +64,14 @@
   var TEAM_CACHE_TTL_MS = 0; // 0 表示战斗期间缓存持久有效
   var CACHE_LIMIT = 1200;
 
-  // 清理已有实例，防止重复挂载
-  if (window['SaltQueueFormationLocker'] && typeof window['SaltQueueFormationLocker'].destroy === 'function') {
-    window['SaltQueueFormationLocker'].destroy();
-  }
-  if (window['SaltQueueEnhancer'] && typeof window['SaltQueueEnhancer'].destroy === 'function') {
-    window['SaltQueueEnhancer'].destroy();
-  }
-  if (window['HeiGuiSaltEnhancer'] && typeof window['HeiGuiSaltEnhancer'].destroy === 'function') {
-    window['HeiGuiSaltEnhancer'].destroy();
-  }
-  if (window['HeiGuiSaltLocker'] && typeof window['HeiGuiSaltLocker'].destroy === 'function') {
-    window['HeiGuiSaltLocker'].destroy();
-  }
-  if (window[GLOBAL_KEY] && typeof window[GLOBAL_KEY].destroy === 'function') {
-    window[GLOBAL_KEY].destroy();
-  }
+  // 防多实例与热重载冲突：若已存在运行中的旧实例，彻底销毁后再启动
+  ['XianBeiSaltEnhancer', 'HeiGuiSaltEnhancer', GLOBAL_KEY].forEach(function (key) {
+    if (key && window[key] && typeof window[key].destroy === 'function') {
+      try { window[key].destroy(); } catch (e) {}
+    }
+  });
   try {
-    ['hg-salt-hub', 'hg-salt-style', '__salt_control_panel', '__salt_enhancer_styles', '__salt_float_ball', 'salt-tags-ui', 'salt-tags-mini', 'salt-tags-style'].forEach(function (id) {
+    ['hg-salt-hub', 'hg-salt-style'].forEach(function (id) {
       var el = document.getElementById(id);
       if (el && el.parentNode) el.parentNode.removeChild(el);
     });
@@ -6430,9 +6420,6 @@
   window[GLOBAL_KEY] = api;
   window.XianBeiSaltEnhancer = api;
   window.HeiGuiSaltEnhancer = api;
-  window.HeiGuiSaltLocker = api;
-  window.SaltQueueEnhancer = api;
-  window.SaltQueueFormationLocker = api;
   start();
   logInfo('已加载：仙贝盐场增强 v2.2.0（集成现代毛玻璃战术面板、智能阵型巡航锁头、离线特征库与排行榜盟友联动）。');
 })();
