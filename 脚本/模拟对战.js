@@ -2815,6 +2815,62 @@
             });
         }
 
+        // 核心修复：Hook 主线战斗数据同步 LevelModule._onBattleSync，实现换人后自动秒级捕获最新骨架
+        try {
+            const levelModule = Utils.safeCall(() => this.getModuleByTypeKey('LEVEL_BATTLE'), null);
+            if (levelModule) {
+                const proto = Object.getPrototypeOf(levelModule) || levelModule;
+                if (typeof proto._onBattleSync === 'function' && !proto._onBattleSync.__nonPvpSimPatched) {
+                    const origSync = proto._onBattleSync;
+                    proto._onBattleSync = function patchedOnBattleSync(newBattleData, ...rest) {
+                        const ret = origSync.call(this, newBattleData, ...rest);
+                        try {
+                            if (isReusableBattleSkeleton(newBattleData)) {
+                                updateReusableBattleSkeleton(newBattleData, {
+                                    source: 'LevelModule._onBattleSync',
+                                    modeKey: 'level',
+                                });
+                                Utils.pushDataSource('检测到主线战斗重置，已实时同步最新骨架');
+                                renderPanel();
+                            }
+                        } catch (err) {
+                            Utils.warn('自动同步新主线骨架异常', err);
+                        }
+                        return ret;
+                    };
+                    proto._onBattleSync.__nonPvpSimPatched = true;
+                }
+            }
+        } catch (e) {
+            Utils.warn('Hook LevelModule._onBattleSync 失败', e);
+        }
+
+        // 核心修复：监听游戏换人、关卡重置与队伍更新等全局信号
+        if (GlobalSignal) {
+            const syncSignalNames = [
+                'EventLevelReset',
+                'SyncBattleTeam',
+                'EventRefreshHeroTeamPanel',
+                'EventPresetTeamClosed',
+                'EventPresetTeamClosedEnd',
+                'LevelBattleStart',
+            ];
+            syncSignalNames.forEach((sigName) => {
+                const sig = GlobalSignal[sigName];
+                if (sig) {
+                    const handler = () => {
+                        tryCaptureAutoLevelBattleSkeleton(`GlobalSignal.${sigName}`);
+                        renderPanel();
+                    };
+                    if (typeof sig.on === 'function') {
+                        sig.on(handler);
+                    } else if (typeof sig.dispatch === 'function') {
+                        this.patchSignalDispatch(sig, handler);
+                    }
+                }
+            });
+        }
+
         state.runtimePatched = true;
         Utils.pushDataSource('运行时捕获补丁已安装');
     };
@@ -3134,6 +3190,24 @@
         if (!hero || typeof hero !== 'object' || !heroId) {
             return null;
         }
+        // 尝试优先从当前活跃的主线战斗中借用该英雄完整的战斗数据
+        try {
+            const levelBattle = Utils.safeCall(() => Runtime.getLevelBattle(), null);
+            const lbTeam = Utils.safeCall(() => levelBattle && levelBattle.options && levelBattle.options.battleData && levelBattle.options.battleData.leftTeam && levelBattle.options.battleData.leftTeam.team, null);
+            if (lbTeam) {
+                for (const { entry } of normalizeTeamEntries(lbTeam)) {
+                    if (extractHeroId(entry) === heroId) {
+                        const cloned = Utils.deepClone(entry);
+                        cloned.index = Number(pos);
+                        return cloned;
+                    }
+                }
+            }
+        } catch (_) {}
+
+        const skillList = Array.isArray(hero.skill) ? hero.skill.slice()
+            : Array.isArray(hero.skills) ? hero.skills.slice()
+            : [];
         return {
             id: heroId,
             heroId,
@@ -3153,7 +3227,7 @@
             skinName: hero.skinName || '',
             activeSkill: Number(hero.activeSkill != null ? hero.activeSkill : hero.activeSkillId != null ? hero.activeSkillId : 0),
             attribute: hero.attribute || new Map(),
-            skill: Array.isArray(hero.skill) ? hero.skill.slice() : [],
+            skill: skillList,
             recordFlag: !!hero.recordFlag,
         };
     }
@@ -3167,6 +3241,69 @@
     }
 
     function extractBattleTeamFromRole(role) {
+        // 优先级 1：如果当前停留在游戏布阵界面 (BattlePrepareDeployPanel)，直接抓取屏幕槽位上的选中英雄
+        try {
+            const indexUI = Utils.safeCall(() => Runtime.getIndexUI(), null);
+            const uiMgr = indexUI && indexUI.UIManager ? indexUI.UIManager.instance : null;
+            if (uiMgr && uiMgr._proxies) {
+                for (const key of Object.keys(uiMgr._proxies)) {
+                    const proxy = uiMgr._proxies[key];
+                    if (proxy && proxy.isShow && proxy._dataAdapter && proxy._dataAdapter.hasSelectId && proxy._dataAdapter.hasSelectId.size > 0) {
+                        const result = new Map();
+                        proxy._dataAdapter.hasSelectId.forEach((heroId, slot) => {
+                            if (heroId) {
+                                result.set(Number(heroId), Number(slot));
+                            }
+                        });
+                        if (result.size > 0) {
+                            Utils.pushDataSource(`从当前打开的布阵界面实时识别上阵队伍 (${result.size}人)`);
+                            return result;
+                        }
+                    }
+                }
+            }
+        } catch (_) {}
+
+        // 优先级 2：如果当前处于灯神玩法，检查灯神专属队伍
+        try {
+            const adapter = Utils.safeCall(() => getActiveAdapter(), null);
+            if (adapter && adapter.key === 'genie' && role && role.genieBattleTeam) {
+                const context = Utils.safeCall(() => adapter.getContext(), null);
+                const clubId = context && context.clubId != null ? context.clubId : 1;
+                const genieTeam = role.genieBattleTeam.get(clubId);
+                if (genieTeam && genieTeam.size > 0) {
+                    const result = new Map();
+                    genieTeam.forEach((heroId, slot) => {
+                        if (heroId) {
+                            result.set(Number(heroId), Number(slot));
+                        }
+                    });
+                    if (result.size > 0) {
+                        return result;
+                    }
+                }
+            }
+        } catch (_) {}
+
+        // 优先级 3：从主线实时自动战斗实体 (LevelBattle) 中提取
+        try {
+            const levelBattle = Utils.safeCall(() => Runtime.getLevelBattle(), null);
+            const lbTeam = Utils.safeCall(() => levelBattle && levelBattle.options && levelBattle.options.battleData && levelBattle.options.battleData.leftTeam && levelBattle.options.battleData.leftTeam.team, null);
+            if (lbTeam) {
+                const result = new Map();
+                normalizeTeamEntries(lbTeam).forEach(({ pos, entry }) => {
+                    const hid = extractHeroId(entry);
+                    if (hid > 0) {
+                        result.set(hid, Number(pos));
+                    }
+                });
+                if (result.size > 0) {
+                    return result;
+                }
+            }
+        } catch (_) {}
+
+        // 优先级 4：默认读取 role.battleTeam
         var bt = role && role.battleTeam;
         if (!bt) return null;
         var result = new Map();
@@ -3286,6 +3423,9 @@
     }
 
     function captureCurrentTeamSnapshot(limitations = null) {
+        // 主动尝试从主线拉取一次最新的战斗骨架
+        tryCaptureAutoLevelBattleSkeleton('captureCurrentTeamSnapshot');
+
         let reusable = Runtime.getReusableBattleSkeleton(false);
         if ((!reusable || !reusable.leftTeam || !reusable.leftTeam.team) && restoreReusableSkeletonFromCandidates()) {
             reusable = Runtime.getReusableBattleSkeleton(false);
@@ -3315,10 +3455,30 @@
         } else {
             Utils.pushDataSource(`获取当前阵容回退到骨架阵容 ${signature}`);
         }
-        const liveWeaponId = Utils.safeCall(() => {
-            var r = Runtime.getRole();
-            return r && r.lordWeaponId != null ? Number(r.lordWeaponId) : 0;
-        }, 0) || reusable.leftTeam.weaponId || 0;
+        // 优先检查当前布阵界面的武器 ID
+        let liveWeaponId = 0;
+        try {
+            const indexUI = Utils.safeCall(() => Runtime.getIndexUI(), null);
+            const uiMgr = indexUI && indexUI.UIManager ? indexUI.UIManager.instance : null;
+            if (uiMgr && uiMgr._proxies) {
+                for (const key of Object.keys(uiMgr._proxies)) {
+                    const proxy = uiMgr._proxies[key];
+                    if (proxy && proxy.isShow && proxy.ui && proxy.ui.m_btnWeapon && proxy.ui.m_btnWeapon.m_weaponId) {
+                        const wId = Number(proxy.ui.m_btnWeapon.m_weaponId.text || proxy.ui.m_btnWeapon.m_weaponId);
+                        if (Number.isFinite(wId) && wId > 0) {
+                            liveWeaponId = wId;
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (_) {}
+        if (!liveWeaponId) {
+            liveWeaponId = Utils.safeCall(() => {
+                var r = Runtime.getRole();
+                return r && r.lordWeaponId != null ? Number(r.lordWeaponId) : 0;
+            }, 0) || reusable.leftTeam.weaponId || 0;
+        }
         const candidate = {
             id: `cand_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
             capturedAt: Utils.now(),
@@ -10033,6 +10193,7 @@
                     const result = syncSelectionFromCurrent();
                     Utils.toast(`已回填 ${result.adapter.label} / ${buildContextText(result.adapter.key, result.context)}`, 'success');
                 } else if (action === 'record') {
+                    tryCaptureAutoLevelBattleSkeleton('recordButtonClick');
                     const adapter = getActiveAdapter();
                     const candidate = captureCurrentTeamSnapshot(adapter ? adapter.getContext() : null);
                     upsertCandidate(candidate);
